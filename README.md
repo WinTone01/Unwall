@@ -1,6 +1,6 @@
 <img width="402" height="442" alt="Ekran Alıntısı" src="https://github.com/user-attachments/assets/c2c18eb0-3013-405b-9238-491eaf58cc9e" />
 
-# Zapret Türkiye Windows
+# Zapret Windows Türkiye
 
 Bu programın amacı Türk kullanıcılar için DPI yani Derin Paket İncelemesi (Deep Packet Inspection) sistemlerini atlatmak için geliştirilmiş olan [zapret-win-bundle](https://github.com/bol-van/zapret-win-bundle) projesinin kullanımını kolaylaştırmaktır.
 
