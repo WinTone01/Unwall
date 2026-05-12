@@ -18,9 +18,7 @@
 #include <WindowsConstants.au3>
 #include <ProgressConstants.au3>
 
-; --- ZIP / TEMP KLASÖRÜ KONTROLÜ ---
 Local $currentDir = @ScriptDir
-; Windows'un ZIP'leri açtığı geçici klasörleri (Temp veya Temporary Internet Files) kontrol et
 If StringInStr($currentDir, @TempDir) Or StringInStr($currentDir, "Temporary Internet Files") Or StringInStr($currentDir, "vfs") Then
     MsgBox(16, "Hata: Arşivden Çalıştırma Saptandı", _
             "Programı ZIP dosyasının içinden doğrudan çalıştırmayın!" & @CRLF & @CRLF & _
@@ -30,53 +28,42 @@ If StringInStr($currentDir, @TempDir) Or StringInStr($currentDir, "Temporary Int
     Exit
 EndIf
 
-; --- GÜVENLİK UYARILARINI (SMARTSCREEN) KALDIR ---
-; Bu komut, programın bulunduğu klasördeki tüm dosyaların "Mark of the Web" işaretini siler.
-; Böylece bash.exe veya winws.exe çalışırken kullanıcıya uyarı çıkmaz.
 RunWait('powershell -Command "Get-ChildItem -Path ''' & @ScriptDir & ''' -Recurse | Unblock-File"', "", @SW_HIDE)
 
-; --- ÇAKIŞMA KONTROLÜ (GoodbyeDPI) ---
 If ProcessExists("goodbyedpi.exe") Then
     Local $iResponse = MsgBox(52, "Çakışma Saptandı", "GoodbyeDPI aktif gözüküyor, Zapret'in çalışması için GoodbyeDPI sonlandırılmalı." & @CRLF & @CRLF & _
             "GoodbyeDPI'ı kapatmak ve varsa servisini kaldırmak istiyor musunuz?")
 
-    If $iResponse = 6 Then ; Evet seçilirse
-        ; İşlemi sonlandır
+    If $iResponse = 6 Then
         ProcessClose("goodbyedpi.exe")
         While ProcessExists("goodbyedpi.exe")
             Sleep(100)
         WEnd
 
-        ; Servisleri temizle
         RunWait(@ComSpec & ' /c sc stop "GoodbyeDPI" & sc delete "GoodbyeDPI" & sc stop "WinDivert" & sc delete "WinDivert" & sc stop "WinDivert14" & sc delete "WinDivert14"', "", @SW_HIDE)
 
         MsgBox(64, "Bilgi", "GoodbyeDPI ve servisleri başarıyla kaldırıldı. Program başlatılıyor.")
-    Else ; Hayır seçilirse
-        Exit ; Programı kapat
+    Else
+        Exit
     EndIf
 EndIf
 
-; --- Tepsi Menüsü Ayarları ---
 Opt("TrayMenuMode", 3)
 Opt("TrayOnEventMode", 1)
 
-; --- Ayarlar ve Dosya Yolları (GÜNCELLENDİ) ---
 Local $serviceName = "ZapretService"
 Local $strategyFile = @ScriptDir & "\strategy.txt"
-Local $winwsPath = @ScriptDir & "\zapret\zapret-winws\winws2.exe" ; <--- winws2.exe
+Local $winwsPath = @ScriptDir & "\zapret\zapret-winws\winws2.exe"
 Local $hostlistPath = @ScriptDir & "\autohostlist.txt"
-Local $blockcheckPath = @ScriptDir & "\zapret\blockcheck\blockcheck2.cmd" ; <--- blockcheck2.cmd
-Local $logPath = @ScriptDir & "\zapret\blockcheck\blockcheck2.log" ; <--- blockcheck2.log
+Local $blockcheckPath = @ScriptDir & "\zapret\blockcheck\blockcheck2.cmd"
+Local $logPath = @ScriptDir & "\zapret\blockcheck\blockcheck2.log"
 
-; --- Global Değişkenler ---
 Global $isZapretRunning = False
 Global $zapretPID = 0
 
-; --- GUI Tasarımı ---
 Local $hGUI = GUICreate("Zapret2 Windows Türkiye", 400, 415)
 GUISetBkColor(0xFFFFFF)
 
-; --- Tepsi Menüsü Öğeleri ---
 Local $trayShow = TrayCreateItem("Göster")
 TrayItemSetOnEvent(-1, "ShowGUI")
 TrayCreateItem("")
@@ -84,7 +71,6 @@ Local $trayExit = TrayCreateItem("Kapat")
 TrayItemSetOnEvent(-1, "ExitApp")
 TraySetClick(16)
 
-; --- Üst Durum Paneli ---
 Local $lblStatusBg = GUICtrlCreateLabel("", 15, 15, 370, 75)
 GUICtrlSetBkColor(-1, 0xF2F4F7)
 Local $lblStatusText = GUICtrlCreateLabel("SİSTEM HAZIRLANIYOR...", 15, 30, 370, 25, $SS_CENTER)
@@ -98,21 +84,20 @@ Local $lblStrategyInfo = GUICtrlCreateLabel("Strateji Durumu: " & (FileExists($s
 GUICtrlSetFont(-1, 9, 400, 0, "Segoe UI")
 GUICtrlSetColor(-1, 0x666666)
 
-; --- Butonlar (BAŞLANGIÇTA DISABLED) ---
 Local $btnRunZapret = GUICtrlCreateButton("ZAPRET'İ BAŞLAT", 50, 105, 300, 55)
-GUICtrlSetState(-1, $GUI_DISABLE) ; <--- KİLİTLİ BAŞLAR
+GUICtrlSetState(-1, $GUI_DISABLE)
 GUICtrlSetFont(-1, 11, 800, 0, "Segoe UI")
 
 Local $chkAutoHost = GUICtrlCreateCheckbox(" Autohostlist - Sadece Engelli Sitelerde Geçerli Yap", 58, 175, 280, 25)
-GUICtrlSetState(-1, BitOR($GUI_CHECKED, $GUI_DISABLE)) ; <--- Hem CHECKED hem DISABLE yapar
+GUICtrlSetState(-1, BitOR($GUI_CHECKED, $GUI_DISABLE))
 GUICtrlSetFont(-1, 9, 400, 0, "Segoe UI")
 
 Local $btnAnalyze = GUICtrlCreateButton("ISS Analizi (Blockcheck) Yap", 50, 215, 300, 40)
-GUICtrlSetState(-1, $GUI_DISABLE) ; <--- KİLİTLİ BAŞLAR
+GUICtrlSetState(-1, $GUI_DISABLE)
 GUICtrlSetFont(-1, 10, 600, 0, "Segoe UI")
 
 Local $btnInstallService = GUICtrlCreateButton("Servis Olarak Yükle (Otomatik Başlat)", 50, 265, 300, 40)
-GUICtrlSetState(-1, $GUI_DISABLE) ; <--- KİLİTLİ BAŞLAR
+GUICtrlSetState(-1, $GUI_DISABLE)
 GUICtrlSetFont(-1, 10, 600, 0, "Segoe UI")
 
 Local $btnRemoveService = GUICtrlCreateButton("Servis ve Kalıntıları Temizle", 50, 315, 300, 35)
@@ -127,7 +112,6 @@ Local $aOtherButtons[4] = [$btnAnalyze, $btnInstallService, $btnRemoveService, $
 
 GUISetState(@SW_SHOW)
 
-; --- GÜVENLİ AÇILIŞ AKIŞI ---
 RunWait(@ComSpec & " /c sc stop WinDivert & sc delete WinDivert & sc stop WinDivert14 & sc delete WinDivert14", "", @SW_HIDE)
 GUICtrlSetData($lblStatusText, "DNS KONTROL EDİLİYOR...")
 
@@ -138,14 +122,12 @@ If $isPoisoned Then
     GUICtrlSetData($lblStatusText, "DNS ZEHİRLENMESİ SAPTANDI!")
     GUICtrlSetColor($lblStatusText, 0xC0392B)
     MsgBox(16, "Kritik Uyarı", "ISS tarafından DNS Zehirlenmesi saptandı!" & @CRLF & @CRLF & _
-           "Bu şartlarda Zapret doğru çalışmayacaktır." & @CRLF & @CRLF & _
-           "Lütfen DNS değiştirin veya YogaDNS, NextDNS gibi DNS istemcileri kullanın.")
+            "Bu şartlarda Zapret doğru çalışmayacaktır." & @CRLF & @CRLF & _
+            "Lütfen DNS değiştirin veya YogaDNS, NextDNS gibi DNS istemcileri kullanın.")
 Else
-    ; DNS Temizse butonları ve servis durumunu aç
     CheckServiceStatus($btnRunZapret, $lblStatusText, $aCriticalButtons, $chkAutoHost)
 EndIf
 
-; --- Ana Döngü ---
 While 1
     Local $nMsg = GUIGetMsg()
     Switch $nMsg
@@ -224,45 +206,34 @@ Func CheckDnsPoisoningSilent()
     Local $testDomain = "updates.discord.com"
     Local $localIP = "", $safeIP = ""
 
-    ; 1. YEREL SORGU (PowerShell Resolve-DnsName)
-    ; -Type A: Sadece IPv4 adreslerini getirir.
-    ; -ErrorAction SilentlyContinue: Hata durumunda (internet yoksa vb.) PowerShell'in hata fışkırtmasını engeller.
     Local $sPSCommand = 'powershell -NoProfile -Command "(Resolve-DnsName ' & $testDomain & ' -Type A -ErrorAction SilentlyContinue).IPAddress"'
     Local $iPidLocal = Run($sPSCommand, "", @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPidLocal)
-    Local $sLocalOut = StringStripWS(StdoutRead($iPidLocal), 3) ; Boşlukları ve yeni satırları temizle
+    Local $sLocalOut = StringStripWS(StdoutRead($iPidLocal), 3)
 
-    ; Eğer birden fazla IP dönerse (Discord genelde liste döner), ilkini alalım
     If $sLocalOut <> "" Then
         Local $aIPs = StringSplit($sLocalOut, @CRLF, 1)
         $localIP = $aIPs[1]
     EndIf
 
-    ; 2. GÜVENLİ SORGU (Cloudflare DoH üzerinden gerçek IP)
     Local $oHTTP = ObjCreate("winhttp.winhttprequest.5.1")
     $oHTTP.Open("GET", "https://1.1.1.1/dns-query?name=" & $testDomain & "&type=A", False)
     $oHTTP.SetRequestHeader("Accept", "application/dns-json")
     $oHTTP.Send()
     If $oHTTP.Status = 200 Then
-        ; JSON içindeki "data":"..." kısmından IP'yi çeker
         Local $aSafeMatches = StringRegExp($oHTTP.ResponseText, 'data":"(\d+\.\d+\.\d+\.\d+)"', 3)
         If UBound($aSafeMatches) > 0 Then $safeIP = $aSafeMatches[0]
     EndIf
 
-    ; --- KARŞILAŞTIRMA VE HATA KONTROLÜ ---
-
-    ; Yerel IP hiç alınamadıysa (DNS cevap vermiyor veya engelli), bunu sorun kabul edelim.
     If $localIP = "" Then Return True
 
-    ; IP'lerin ilk iki bloğunu (Oktet) karşılaştır (Örn: 162.159)
-    ; Bu yöntem IP son hanesi değişse bile doğru sonucu verir.
     Local $localPrefix = StringRegExpReplace($localIP, "^(\d+\.\d+).*", "$1")
     Local $safePrefix = StringRegExpReplace($safeIP, "^(\d+\.\d+).*", "$1")
 
     If $localPrefix <> $safePrefix Then
-        Return True ; Zehirlenme (Poisoning) var!
+        Return True
     Else
-        Return False ; Her şey temiz.
+        Return False
     EndIf
 EndFunc
 
@@ -290,21 +261,16 @@ Func StartWinws($ctrlID, $statusID, $aBtns)
     Local $savedStrategy = StringStripWS(FileRead($strategyFile), 3)
     If $savedStrategy = "" Then Return MsgBox(48, "Hata", "Önce analiz yapın.")
 
-    ; --- LUA TAM YOLLARINI BURADA OLUŞTURUYORUZ ---
     Local $luaBaseDir = StringRegExpReplace($winwsPath, "\\[^\\]+$", "") & "\lua\"
     Local $luaParams = ' --lua-init="@' & $luaBaseDir & 'zapret-lib.lua"' & _
-                       ' --lua-init="@' & $luaBaseDir & 'zapret-antidpi.lua"' & _
-                       ' --lua-init="@' & $luaBaseDir & 'zapret-auto.lua"'
+                        ' --lua-init="@' & $luaBaseDir & 'zapret-antidpi.lua"' & _
+                        ' --lua-init="@' & $luaBaseDir & 'zapret-auto.lua"'
 
-    ; Komutu birleştir (Strateji + Dinamik Lua Yolları)
     Local $fullCommand = '"' & $winwsPath & '" --wf-l3=ipv4 --wf-tcp-out=0-65535 --wf-udp-out=0-65535 ' & $savedStrategy & $luaParams
 
     If GUICtrlRead($chkAutoHost) = $GUI_CHECKED Then
         $fullCommand &= ' --hostlist-auto="' & $hostlistPath & '"'
     EndIf
-
-    ; Test için MsgBox (İstersen sonra silebilirsin)
-    ;MsgBox(0, "Çalıştırılan Komut", $fullCommand)
 
     $zapretPID = Run($fullCommand, @ScriptDir & "\zapret\zapret-winws\", @SW_HIDE)
 
@@ -334,8 +300,8 @@ Func InstallServiceClean($chkID)
 
     Local $luaBaseDir = StringRegExpReplace($winwsPath, "\\[^\\]+$", "") & "\lua\"
     Local $luaParams = ' --lua-init="@' & $luaBaseDir & 'zapret-lib.lua"' & _
-                       ' --lua-init="@' & $luaBaseDir & 'zapret-antidpi.lua"' & _
-                       ' --lua-init="@' & $luaBaseDir & 'zapret-auto.lua"'
+                        ' --lua-init="@' & $luaBaseDir & 'zapret-antidpi.lua"' & _
+                        ' --lua-init="@' & $luaBaseDir & 'zapret-auto.lua"'
 
     Local $binArgs = '--wf-l3=ipv4 --wf-tcp-out=0-65535 --wf-udp-out=0-65535 ' & $savedStrategy & $luaParams
 
@@ -344,7 +310,7 @@ Func InstallServiceClean($chkID)
     EndIf
 
     Local $fullBinPath = '"' & $winwsPath & '" ' & $binArgs
-    $fullBinPath = StringReplace($fullBinPath, '"', '\"') ; Tırnakları kaçır
+    $fullBinPath = StringReplace($fullBinPath, '"', '\"')
 
     RemoveService()
     Sleep(500)
@@ -363,23 +329,18 @@ Func RunBlockcheck($ctrlID)
     Local $strategyFound = ""
     If FileExists($logPath) Then FileDelete($logPath)
 
-    ; --- YOLLARI TANIMLA ---
     Local $bashPath = @ScriptDir & "\zapret\cygwin\bin\bash.exe"
     Local $shScriptPath = @ScriptDir & "\zapret\blockcheck\zapret2\blog.sh"
     Local $sCommand = '"' & $bashPath & '" -i "' & $shScriptPath & '"'
 
-    ; --- DOĞRUDAN GİZLİ BAŞLAT ---
-    ; Aracı kurumlar (elevator/cmd) olmadığı için bu satır pencereyi hiç oluşturmaz.
     Local $iPidBash = Run($sCommand, @ScriptDir & "\zapret\blockcheck", @SW_HIDE)
 
-    ; Log dosyasının oluşması için kısa bir bekleme
     Local $hWaitTimer = TimerInit()
     While Not FileExists($logPath)
         Sleep(500)
         If TimerDiff($hWaitTimer) > 10000 Then ExitLoop
     WEnd
 
-    ; --- LOG TAKİP DÖNGÜSÜ ---
     Local $hTimer = TimerInit()
     While ProcessExists("bash.exe")
         Sleep(1000)
@@ -389,7 +350,6 @@ Func RunBlockcheck($ctrlID)
             Local $sContent = FileRead($hFile)
             FileClose($hFile)
 
-            ; iana.org testini görmezden gelerek gerçek stratejiyi ara
             Local $sFiltered = StringReplace($sContent, "iana.org", "IGNORE")
             If StringInStr($sFiltered, "!!!!! AVAILABLE !!!!!") Then
                 $strategyFound = _GetLastStrategyFromText($sContent)
@@ -397,54 +357,40 @@ Func RunBlockcheck($ctrlID)
             EndIf
         EndIf
 
-        ; 10 dakika zaman aşımı (güvenlik için)
         If TimerDiff($hTimer) > 600000 Then ExitLoop
     WEnd
 
-    ; --- SÜREÇLERİ SONLANDIR (TEMİZLİK) ---
-    ; Strateji bulunduysa veya döngü bittiyse tüm sülaleyi vuruyoruz
     Local $aProcesses = ["bash.exe", "sh.exe", "tee.exe", "winws2.exe"]
     For $sProc In $aProcesses
         RunWait(@ComSpec & " /c taskkill /F /IM " & $sProc & " /T", "", @SW_HIDE)
-		;MsgBox(0,"",$sProc)
     Next
 
-    ; --- SONUCU KAYDET ---
     If $strategyFound <> "" Then
         Local $hStore = FileOpen($strategyFile, 2)
         FileWrite($hStore, $strategyFound)
         FileClose($hStore)
         MsgBox(64, "Başarılı", "Analiz tamamlandı. Uygun strateji ayıklandı.")
-	Else
-		MsgBox(16, "Başarısız", "10 dakika boyunca strateji bulunamadı, sonlandırıldı.")
+    Else
+        MsgBox(16, "Başarısız", "10 dakika boyunca strateji bulunamadı, sonlandırıldı.")
     EndIf
 EndFunc
 
-; Stratejiyi metin içerisinden ayıklayan ve Lua kütüphanelerini ekleyen yardımcı fonksiyon
 Func _GetLastStrategyFromText($sText)
     Local $aLines = StringSplit(StringStripCR($sText), @LF)
 
-    ; Baştan sona değil, sondan başa doğru arıyoruz ki en son (en güncel) sonucu bulalım
     For $i = $aLines[0] To 1 Step -1
-        ; iana.org satırını ve altındaki AVAILABLE'ı tamamen atla
         If StringInStr($aLines[$i], "iana.org") Then ContinueLoop
 
         If StringInStr($aLines[$i], "!!!!! AVAILABLE !!!!!") Then
             If $i > 1 Then
-                Local $sPrevLine = $aLines[$i - 1] ; Stratejinin olduğu satır
+                Local $sPrevLine = $aLines[$i - 1]
 
-                ; Referans noktamız: --wf-tcp-out=443
                 Local $targetStr = "--wf-tcp-out=443"
                 Local $startPos = StringInStr($sPrevLine, $targetStr)
 
                 If $startPos > 0 Then
-                    ; Parametrenin bittiği yeri bul (443'ten sonraki kısım)
                     Local $cutPoint = $startPos + StringLen($targetStr)
-
-                    ; Sadece o kısımdan sonrasını al ve başındaki/sonundaki boşlukları temizle
                     Local $res = StringStripWS(StringMid($sPrevLine, $cutPoint), 3)
-
-                    ; Çıktı tam olarak istediğin gibi olacak: --payload... --lua-desync...
                     Return $res
                 EndIf
             EndIf
