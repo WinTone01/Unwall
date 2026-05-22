@@ -1,4 +1,4 @@
-<img width="402" height="442" alt="Ekran Alıntısı" src="https://github.com/user-attachments/assets/c2c18eb0-3013-405b-9238-491eaf58cc9e" />
+<img width="402" height="442" alt="image" src="https://github.com/user-attachments/assets/8ed2569a-e8e3-422f-9f8c-d69fe025c3fd" />
 
 # Zapret Windows Türkiye
 
