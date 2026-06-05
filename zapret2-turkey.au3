@@ -3,8 +3,8 @@
 #AutoIt3Wrapper_Icon=zapret\zapret-winws\winws2.ico
 #AutoIt3Wrapper_UseX64=y
 #AutoIt3Wrapper_Res_Description=Zapret2 Windows Türkiye - Zapret Kullanmayı Kolaylaştıran Araç
-#AutoIt3Wrapper_Res_Fileversion=2.1.0.0
-#AutoIt3Wrapper_Res_ProductVersion=2.1
+#AutoIt3Wrapper_Res_Fileversion=2.4.0.0
+#AutoIt3Wrapper_Res_ProductVersion=2.4
 #AutoIt3Wrapper_Res_LegalCopyright=Ali Mali
 #AutoIt3Wrapper_Res_Language=1055
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
@@ -17,7 +17,10 @@
 #include <StaticConstants.au3>
 #include <WindowsConstants.au3>
 #include <ProgressConstants.au3>
+#include <TrayConstants.au3>
 
+
+; --- ZIP / TEMP KLASÖRÜ KONTROLÜ ---
 Local $currentDir = @ScriptDir
 If StringInStr($currentDir, @TempDir) Or StringInStr($currentDir, "Temporary Internet Files") Or StringInStr($currentDir, "vfs") Then
     MsgBox(16, "Hata: Arşivden Çalıştırma Saptandı", _
@@ -28,8 +31,10 @@ If StringInStr($currentDir, @TempDir) Or StringInStr($currentDir, "Temporary Int
     Exit
 EndIf
 
+; --- GÜVENLİK UYARILARINI (SMARTSCREEN) KALDIR ---
 RunWait('powershell -Command "Get-ChildItem -Path ''' & @ScriptDir & ''' -Recurse | Unblock-File"', "", @SW_HIDE)
 
+; --- ÇAKIŞMA KONTROLÜ (GoodbyeDPI) ---
 If ProcessExists("goodbyedpi.exe") Then
     Local $iResponse = MsgBox(52, "Çakışma Saptandı", "GoodbyeDPI aktif gözüküyor, Zapret'in çalışması için GoodbyeDPI sonlandırılmalı." & @CRLF & @CRLF & _
             "GoodbyeDPI'ı kapatmak ve varsa servisini kaldırmak istiyor musunuz?")
@@ -39,38 +44,44 @@ If ProcessExists("goodbyedpi.exe") Then
         While ProcessExists("goodbyedpi.exe")
             Sleep(100)
         WEnd
-
         RunWait(@ComSpec & ' /c sc stop "GoodbyeDPI" & sc delete "GoodbyeDPI" & sc stop "WinDivert" & sc delete "WinDivert" & sc stop "WinDivert14" & sc delete "WinDivert14"', "", @SW_HIDE)
-
         MsgBox(64, "Bilgi", "GoodbyeDPI ve servisleri başarıyla kaldırıldı. Program başlatılıyor.")
     Else
         Exit
     EndIf
 EndIf
 
+; --- Tepsi Menüsü Ayarları ---
 Opt("TrayMenuMode", 3)
 Opt("TrayOnEventMode", 1)
 
+; --- Ayarlar ve Dosya Yolları ---
 Local $serviceName = "ZapretService"
 Local $strategyFile = @ScriptDir & "\strategy.txt"
 Local $winwsPath = @ScriptDir & "\zapret\zapret-winws\winws2.exe"
 Local $hostlistPath = @ScriptDir & "\autohostlist.txt"
+Local $normalHostlistPath = @ScriptDir & "\hostlist.txt"
 Local $blockcheckPath = @ScriptDir & "\zapret\blockcheck\blockcheck2.cmd"
 Local $logPath = @ScriptDir & "\zapret\blockcheck\blockcheck2.log"
 
+; --- Global Değişkenler ---
 Global $isZapretRunning = False
 Global $zapretPID = 0
 
-Local $hGUI = GUICreate("Zapret2 Windows Türkiye", 400, 415)
+; --- GUI Tasarımı ---
+Local $hGUI = GUICreate("Zapret2 Windows Türkiye v2.4", 400, 480) ; Yükseklik grup için ideal boyuta getirildi
 GUISetBkColor(0xFFFFFF)
 
+; --- Tepsi Menüsü Öğeleri ---
 Local $trayShow = TrayCreateItem("Göster")
 TrayItemSetOnEvent(-1, "ShowGUI")
 TrayCreateItem("")
 Local $trayExit = TrayCreateItem("Kapat")
 TrayItemSetOnEvent(-1, "ExitApp")
+TraySetOnEvent($TRAY_EVENT_PRIMARYDOUBLE, "ShowGUI")
 TraySetClick(16)
 
+; --- Üst Durum Paneli ---
 Local $lblStatusBg = GUICtrlCreateLabel("", 15, 15, 370, 75)
 GUICtrlSetBkColor(-1, 0xF2F4F7)
 Local $lblStatusText = GUICtrlCreateLabel("SİSTEM HAZIRLANIYOR...", 15, 30, 370, 25, $SS_CENTER)
@@ -80,38 +91,52 @@ GUICtrlSetColor(-1, 0xE67E22)
 Local $pBar = GUICtrlCreateProgress(15, 75, 370, 15, $PBS_MARQUEE)
 GUICtrlSetState(-1, $GUI_HIDE)
 
-Local $lblStrategyInfo = GUICtrlCreateLabel("Strateji Durumu: " & (FileExists($strategyFile) ? "Mevcut" : "Mevcut Değil"), 15, 55, 370, 20, $SS_CENTER)
+Local $lblStrategyInfo = GUICtrlCreateLabel("Strateji Durumu: " & (HasValidStrategy() ? "Mevcut" : "Mevcut Değil"), 15, 55, 370, 20, $SS_CENTER)
 GUICtrlSetFont(-1, 9, 400, 0, "Segoe UI")
 GUICtrlSetColor(-1, 0x666666)
 
+; --- Butonlar (BAŞLANGIÇTA DISABLED) ---
 Local $btnRunZapret = GUICtrlCreateButton("ZAPRET'İ BAŞLAT", 50, 105, 300, 55)
 GUICtrlSetState(-1, $GUI_DISABLE)
 GUICtrlSetFont(-1, 11, 800, 0, "Segoe UI")
 
-Local $chkAutoHost = GUICtrlCreateCheckbox(" Autohostlist - Sadece Engelli Sitelerde Geçerli Yap", 58, 175, 280, 25)
+; --- HOSTLIST HİBRİT PANELİ (YENİ) ---
+Local $chkAutoHost = GUICtrlCreateCheckbox(" Hostlist (Filtre listesi) Kullanımını Aktifleştir", 55, 170, 290, 25)
+GUICtrlSetState(-1, BitOR($GUI_CHECKED, $GUI_DISABLE))
+GUICtrlSetFont(-1, 9, 800, 0, "Segoe UI")
+
+GUICtrlCreateGroup(" Filtreleme Modu ", 45, 195, 310, 75)
+Local $rdoAutoHost = GUICtrlCreateRadio(" Auto hostlist (Zapret oluşturur)", 58, 215, 280, 20)
 GUICtrlSetState(-1, BitOR($GUI_CHECKED, $GUI_DISABLE))
 GUICtrlSetFont(-1, 9, 400, 0, "Segoe UI")
 
-Local $btnAnalyze = GUICtrlCreateButton("ISS Analizi (Blockcheck) Yap", 50, 215, 300, 40)
+Local $rdoNormalHost = GUICtrlCreateRadio(" Manuel hostlist ('hostlist.txt' İçeriği)", 58, 240, 280, 20)
 GUICtrlSetState(-1, $GUI_DISABLE)
-GUICtrlSetFont(-1, 10, 600, 0, "Segoe UI")
-
-Local $btnInstallService = GUICtrlCreateButton("Servis Olarak Yükle (Otomatik Başlat)", 50, 265, 300, 40)
-GUICtrlSetState(-1, $GUI_DISABLE)
-GUICtrlSetFont(-1, 10, 600, 0, "Segoe UI")
-
-Local $btnRemoveService = GUICtrlCreateButton("Servis ve Kalıntıları Temizle", 50, 315, 300, 35)
-GUICtrlSetFont(-1, 10, 600, 0, "Segoe UI")
-
-Local $lblFooter = GUICtrlCreateLabel("Zapret2 v0.9.5.2", 0, 390, 400, 20, $SS_CENTER)
 GUICtrlSetFont(-1, 9, 400, 0, "Segoe UI")
+GUICtrlCreateGroup("", -1, -1, 1, 1)
+
+Local $btnAnalyze = GUICtrlCreateButton("ISS Analizi (Blockcheck) Yap", 50, 280, 300, 40)
+GUICtrlSetState(-1, $GUI_DISABLE)
+GUICtrlSetFont(-1, 10, 600, 0, "Segoe UI")
+
+Local $btnInstallService = GUICtrlCreateButton("Servis Olarak Yükle (Otomatik Başlat)", 50, 330, 300, 40)
+GUICtrlSetState(-1, $GUI_DISABLE)
+GUICtrlSetFont(-1, 10, 600, 0, "Segoe UI")
+
+Local $btnRemoveService = GUICtrlCreateButton("Servis ve Kalıntıları Temizle", 50, 380, 300, 35)
+GUICtrlSetFont(-1, 10, 600, 0, "Segoe UI")
+
+Local $lblFooter = GUICtrlCreateLabel("Zapret2 v0.9.5.2", 0, 455, 400, 20, $SS_CENTER)
+GUICtrlSetFont(-1, 8, 400, 0, "Segoe UI")
 GUICtrlSetColor(-1, 0xBDC3C7)
 
-Local $aCriticalButtons[4] = [$btnRunZapret, $btnAnalyze, $btnInstallService, $chkAutoHost]
-Local $aOtherButtons[4] = [$btnAnalyze, $btnInstallService, $btnRemoveService, $chkAutoHost]
+; Dizi tanımlamaları güncellendi
+Local $aCriticalButtons[6] = [$btnRunZapret, $btnAnalyze, $btnInstallService, $chkAutoHost, $rdoAutoHost, $rdoNormalHost]
+Local $aOtherButtons[6] = [$btnAnalyze, $btnInstallService, $btnRemoveService, $chkAutoHost, $rdoAutoHost, $rdoNormalHost]
 
 GUISetState(@SW_SHOW)
 
+; --- GÜVENLİ AÇILIŞ AKIŞI ---
 RunWait(@ComSpec & " /c sc stop WinDivert & sc delete WinDivert & sc stop WinDivert14 & sc delete WinDivert14", "", @SW_HIDE)
 GUICtrlSetData($lblStatusText, "DNS KONTROL EDİLİYOR...")
 
@@ -128,6 +153,7 @@ Else
     CheckServiceStatus($btnRunZapret, $lblStatusText, $aCriticalButtons, $chkAutoHost)
 EndIf
 
+; --- Ana Döngü ---
 While 1
     Local $nMsg = GUIGetMsg()
     Switch $nMsg
@@ -137,6 +163,16 @@ While 1
         Case $GUI_EVENT_MINIMIZE
             GUISetState(@SW_HIDE, $hGUI)
             TraySetToolTip("Zapret Windows Türkiye Çalışıyor")
+
+        ; --- CHECKBOX'A TIKLANDIĞINDA RADYOLARI TETİKLE ---
+        Case $chkAutoHost
+            If GUICtrlRead($chkAutoHost) = $GUI_CHECKED Then
+                GUICtrlSetState($rdoAutoHost, $GUI_ENABLE)
+                GUICtrlSetState($rdoNormalHost, $GUI_ENABLE)
+            Else
+                GUICtrlSetState($rdoAutoHost, $GUI_DISABLE)
+                GUICtrlSetState($rdoNormalHost, $GUI_DISABLE)
+            EndIf
 
         Case $btnAnalyze
             Local $iConfirm = MsgBox(33, "Bilgi", "Analiz işlemi 5-10 dakika sürebilir." & @CRLF & "Lütfen bitene kadar bekleyin.")
@@ -158,7 +194,7 @@ While 1
                 GUICtrlSetState($btnRemoveService, $GUI_ENABLE)
                 CheckServiceStatus($btnRunZapret, $lblStatusText, $aCriticalButtons, $chkAutoHost)
                 GUICtrlSetData($lblStatusText, "ANALİZ TAMAMLANDI")
-                GUICtrlSetData($lblStrategyInfo, "Strateji Durumu: " & (FileExists($strategyFile) ? "Mevcut" : "Mevcut Değil"))
+                GUICtrlSetData($lblStrategyInfo, "Strateji Durumu: " & (HasValidStrategy() ? "Mevcut" : "Mevcut Değil"))
             EndIf
 
         Case $btnRunZapret
@@ -176,7 +212,7 @@ While 1
             RemoveService()
             $isPoisoned = CheckDnsPoisoningSilent()
             If Not $isPoisoned Then CheckServiceStatus($btnRunZapret, $lblStatusText, $aCriticalButtons, $chkAutoHost)
-            GUICtrlSetData($lblStrategyInfo, "Strateji Durumu: " & (FileExists($strategyFile) ? "Mevcut" : "Mevcut Değil"))
+            GUICtrlSetData($lblStrategyInfo, "Strateji Durumu: " & (HasValidStrategy() ? "Mevcut" : "Mevcut Değil"))
             MsgBox(64, "Bilgi", "Temizlik tamamlandı.")
     EndSwitch
 WEnd
@@ -216,25 +252,34 @@ Func CheckDnsPoisoningSilent()
         $localIP = $aIPs[1]
     EndIf
 
-    Local $oHTTP = ObjCreate("winhttp.winhttprequest.5.1")
-    $oHTTP.Open("GET", "https://1.1.1.1/dns-query?name=" & $testDomain & "&type=A", False)
-    $oHTTP.SetRequestHeader("Accept", "application/dns-json")
-    $oHTTP.Send()
-    If $oHTTP.Status = 200 Then
-        Local $aSafeMatches = StringRegExp($oHTTP.ResponseText, 'data":"(\d+\.\d+\.\d+\.\d+)"', 3)
-        If UBound($aSafeMatches) > 0 Then $safeIP = $aSafeMatches[0]
+		#cs		*****************************DOH KONTROLÜ YERİNE SABİT DISCORD IP ADRESİ YAZIYORUM*******************
+    ; GÜVENLİ DoH SORGUSU (Cloudflare)
+    Local $sDoH = _
+        'powershell -NoProfile -Command "' & _
+        '$r = Invoke-RestMethod ''https://1.1.1.1/dns-query?name=' & $testDomain & '&type=A'' ' & _
+        '-Headers @{Accept=''application/dns-json''} -ErrorAction SilentlyContinue; ' & _
+        '$r.Answer.data"'
+
+    Local $iPidSafe = Run($sDoH, "", @SW_HIDE, $STDOUT_CHILD)
+    ProcessWaitClose($iPidSafe)
+
+    Local $sSafeOut = StringStripWS(StdoutRead($iPidSafe), 3)
+
+    If $sSafeOut <> "" Then
+        Local $aSafeIPs = StringSplit($sSafeOut, @CRLF, 1)
+        $safeIP = $aSafeIPs[1]
     EndIf
+	#ce
+
+    $safeIP = "162.159.137.232"
 
     If $localIP = "" Then Return True
+    If $safeIP = "" Then Return True
 
     Local $localPrefix = StringRegExpReplace($localIP, "^(\d+\.\d+).*", "$1")
     Local $safePrefix = StringRegExpReplace($safeIP, "^(\d+\.\d+).*", "$1")
 
-    If $localPrefix <> $safePrefix Then
-        Return True
-    Else
-        Return False
-    EndIf
+    Return ($localPrefix <> $safePrefix)
 EndFunc
 
 Func CheckServiceStatus($manualBtn, $statusID, $lockArray, $chkID)
@@ -244,7 +289,21 @@ Func CheckServiceStatus($manualBtn, $statusID, $lockArray, $chkID)
     If StringInStr($sOutput, "SERVICE_NAME") Then
         Local $iPidCfg = Run(@ComSpec & " /c sc qc " & $serviceName, "", @SW_HIDE, $STDOUT_CHILD)
         ProcessWaitClose($iPidCfg)
-        GUICtrlSetState($chkID, StringInStr(StdoutRead($iPidCfg), "--hostlist-auto") ? $GUI_CHECKED : $GUI_UNCHECKED)
+        Local $sCfgOut = StdoutRead($iPidCfg)
+
+        ; Servis durumuna göre Checkbox ve Radyo buton senkronizasyonu
+        If StringInStr($sCfgOut, "--hostlist-auto") Then
+            GUICtrlSetState($chkID, $GUI_CHECKED)
+            GUICtrlSetState($rdoAutoHost, $GUI_CHECKED)
+        ElseIf StringInStr($sCfgOut, "--hostlist=") Then
+            GUICtrlSetState($chkID, $GUI_CHECKED)
+            GUICtrlSetState($rdoNormalHost, $GUI_CHECKED)
+        Else
+            GUICtrlSetState($chkID, $GUI_UNCHECKED)
+            GUICtrlSetState($rdoAutoHost, $GUI_DISABLE)
+            GUICtrlSetState($rdoNormalHost, $GUI_DISABLE)
+        EndIf
+
         GUICtrlSetState($manualBtn, $GUI_DISABLE)
         _SetButtonsState($lockArray, $GUI_DISABLE)
         GUICtrlSetData($statusID, "SERVİS MODU AKTİF")
@@ -252,6 +311,16 @@ Func CheckServiceStatus($manualBtn, $statusID, $lockArray, $chkID)
     Else
         GUICtrlSetState($manualBtn, $GUI_ENABLE)
         _SetButtonsState($lockArray, $GUI_ENABLE)
+
+        ; Sistem açıkken checkbox durumuna göre radyoları ayarla
+        If GUICtrlRead($chkID) = $GUI_CHECKED Then
+            GUICtrlSetState($rdoAutoHost, $GUI_ENABLE)
+            GUICtrlSetState($rdoNormalHost, $GUI_ENABLE)
+        Else
+            GUICtrlSetState($rdoAutoHost, $GUI_DISABLE)
+            GUICtrlSetState($rdoNormalHost, $GUI_DISABLE)
+        EndIf
+
         GUICtrlSetData($statusID, "SİSTEM HAZIR")
         GUICtrlSetColor($statusID, 0x2C3E50)
     EndIf
@@ -263,14 +332,22 @@ Func StartWinws($ctrlID, $statusID, $aBtns)
 
     Local $luaBaseDir = StringRegExpReplace($winwsPath, "\\[^\\]+$", "") & "\lua\"
     Local $luaParams = ' --lua-init="@' & $luaBaseDir & 'zapret-lib.lua"' & _
-                        ' --lua-init="@' & $luaBaseDir & 'zapret-antidpi.lua"' & _
-                        ' --lua-init="@' & $luaBaseDir & 'zapret-auto.lua"'
+                       ' --lua-init="@' & $luaBaseDir & 'zapret-antidpi.lua"' & _
+                       ' --lua-init="@' & $luaBaseDir & 'zapret-auto.lua"'
 
     Local $fullCommand = '"' & $winwsPath & '" --wf-l3=ipv4 --wf-tcp-out=0-65535 --wf-udp-out=0-65535 ' & $savedStrategy & $luaParams
 
+    ; --- HİBRİT KONTROL MEKANİZMASI ---
     If GUICtrlRead($chkAutoHost) = $GUI_CHECKED Then
-        $fullCommand &= ' --hostlist-auto="' & $hostlistPath & '"'
+        If GUICtrlRead($rdoAutoHost) = $GUI_CHECKED Then
+            $fullCommand &= ' --hostlist-auto="' & $hostlistPath & '"'
+        ElseIf GUICtrlRead($rdoNormalHost) = $GUI_CHECKED Then
+            If Not FileExists($normalHostlistPath) Then FileWrite($normalHostlistPath, "discord.com" & @CRLF & "updates.discord.com")
+            $fullCommand &= ' --hostlist="' & $normalHostlistPath & '"'
+        EndIf
     EndIf
+
+    ClipPut($fullCommand)
 
     $zapretPID = Run($fullCommand, @ScriptDir & "\zapret\zapret-winws\", @SW_HIDE)
 
@@ -300,13 +377,20 @@ Func InstallServiceClean($chkID)
 
     Local $luaBaseDir = StringRegExpReplace($winwsPath, "\\[^\\]+$", "") & "\lua\"
     Local $luaParams = ' --lua-init="@' & $luaBaseDir & 'zapret-lib.lua"' & _
-                        ' --lua-init="@' & $luaBaseDir & 'zapret-antidpi.lua"' & _
-                        ' --lua-init="@' & $luaBaseDir & 'zapret-auto.lua"'
+                       ' --lua-init="@' & $luaBaseDir & 'zapret-antidpi.lua"' & _
+                       ' --lua-init="@' & $luaBaseDir & 'zapret-auto.lua"'
 
     Local $binArgs = '--wf-l3=ipv4 --wf-tcp-out=0-65535 --wf-udp-out=0-65535 ' & $savedStrategy & $luaParams
 
+    ; --- SERVİS İÇİN HİBRİT KONTROL ---
     If GUICtrlRead($chkID) = $GUI_CHECKED Then
-        $binArgs &= ' --hostlist-auto="' & $hostlistPath & '"'
+        If GUICtrlRead($rdoAutoHost) = $GUI_CHECKED Then
+            If Not FileExists($hostlistPath) Then FileWrite($hostlistPath, "")
+            $binArgs &= ' --hostlist-auto="' & $hostlistPath & '"'
+        ElseIf GUICtrlRead($rdoNormalHost) = $GUI_CHECKED Then
+            If Not FileExists($normalHostlistPath) Then FileWrite($normalHostlistPath, "discord.com" & @CRLF & "updates.discord.com")
+            $binArgs &= ' --hostlist="' & $normalHostlistPath & '"'
+        EndIf
     EndIf
 
     Local $fullBinPath = '"' & $winwsPath & '" ' & $binArgs
@@ -317,7 +401,7 @@ Func InstallServiceClean($chkID)
 
     If RunWait(@ComSpec & " /c sc create " & $serviceName & ' binPath= "' & $fullBinPath & '" start= auto', "", @SW_HIDE) = 0 Then
         RunWait(@ComSpec & " /c sc start " & $serviceName, "", @SW_HIDE)
-        MsgBox(64, "Başarılı", "Servis kuruldu." & @CRLF & @CRLF & "Zapret bu programı açmasanız da çalışacaktır.")
+        MsgBox(64, "Başarılı", "Servis kuruldu." & @CRLF & @CRLF & "Zapret bu programı açmasanız da seçtiğiniz modda çalışacaktır.")
     EndIf
 EndFunc
 
@@ -327,6 +411,7 @@ EndFunc
 
 Func RunBlockcheck($ctrlID)
     Local $strategyFound = ""
+    Local $isNoBypassNeeded = False
     If FileExists($logPath) Then FileDelete($logPath)
 
     Local $bashPath = @ScriptDir & "\zapret\cygwin\bin\bash.exe"
@@ -341,6 +426,7 @@ Func RunBlockcheck($ctrlID)
         If TimerDiff($hWaitTimer) > 10000 Then ExitLoop
     WEnd
 
+    ; --- LOG TAKİP DÖNGÜSÜ ---
     Local $hTimer = TimerInit()
     While ProcessExists("bash.exe")
         Sleep(1000)
@@ -355,6 +441,11 @@ Func RunBlockcheck($ctrlID)
                 $strategyFound = _GetLastStrategyFromText($sContent)
                 If $strategyFound <> "" Then ExitLoop
             EndIf
+
+            ; --- SANSÜRSÜZ / DPI UYGULANMAYAN HAT KONTROLÜ ---
+            If StringInStr($sContent, "working without bypass") Or StringInStr($sContent, "not blocked") Then
+                $isNoBypassNeeded = True
+            EndIf
         EndIf
 
         If TimerDiff($hTimer) > 600000 Then ExitLoop
@@ -365,13 +456,19 @@ Func RunBlockcheck($ctrlID)
         RunWait(@ComSpec & " /c taskkill /F /IM " & $sProc & " /T", "", @SW_HIDE)
     Next
 
+    ; --- SONUCU BİLDİRİRKEN ---
     If $strategyFound <> "" Then
         Local $hStore = FileOpen($strategyFile, 2)
         FileWrite($hStore, $strategyFound)
         FileClose($hStore)
         MsgBox(64, "Başarılı", "Analiz tamamlandı. Uygun strateji ayıklandı.")
+    ElseIf $isNoBypassNeeded Then
+        MsgBox(64, "Bilgi: Analiz Tamamlandı", _
+                "İnternet hattınızda herhangi bir DPI / Sansür kısıtlaması saptanmadı!" & @CRLF & @CRLF & _
+                "Zapret gibi araçları kullanmanıza gerek yoktur." & @CRLF & _
+                "Discord veya diğer engelli servislere erişmek için sadece güvenli bir DNS (NextDNS, YogaDNS, Cloudflare vb.) kullanmanız yeterlidir.")
     Else
-        MsgBox(16, "Başarısız", "10 dakika boyunca strateji bulunamadı, sonlandırıldı.")
+        MsgBox(16, "Başarısız", "10 dakika boyunca strateji bulunamadı veya işlem zaman aşımına uğradı.")
     EndIf
 EndFunc
 
@@ -390,11 +487,41 @@ Func _GetLastStrategyFromText($sText)
 
                 If $startPos > 0 Then
                     Local $cutPoint = $startPos + StringLen($targetStr)
-                    Local $res = StringStripWS(StringMid($sPrevLine, $cutPoint), 3)
-                    Return $res
+                    Local $sRawStrategy = StringStripWS(StringMid($sPrevLine, $cutPoint), 3)
+
+                    ; =========================================================================
+                    ; --- DİNAMİK ÇİFT TIRNAK PAKETLEME MEKANİZMASI ---
+                    ; =========================================================================
+                    Local $aParams = StringSplit($sRawStrategy, " ", 1)
+                    Local $sFormattedStrategy = ""
+
+                    For $j = 1 To $aParams[0]
+                        Local $sCurrentParam = $aParams[$j]
+
+                        Local $iFirstEq = StringInStr($sCurrentParam, "=")
+                        If $iFirstEq > 0 Then
+                            Local $sParamName = StringLeft($sCurrentParam, $iFirstEq)
+                            Local $sParamValue = StringMid($sCurrentParam, $iFirstEq + 1)
+
+                            $sCurrentParam = $sParamName & '"' & $sParamValue & '"'
+                        EndIf
+
+                        $sFormattedStrategy &= $sCurrentParam & " "
+                    Next
+
+                    $sFormattedStrategy = StringStripWS($sFormattedStrategy, 3)
+                    ; =========================================================================
+
+                    Return $sFormattedStrategy
                 EndIf
             EndIf
         EndIf
     Next
     Return ""
+EndFunc
+
+Func HasValidStrategy()
+    If Not FileExists($strategyFile) Then Return False
+    Local $sContent = StringStripWS(FileRead($strategyFile), 3)
+    Return ($sContent <> "")
 EndFunc
