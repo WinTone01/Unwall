@@ -3,7 +3,7 @@
 
 # Zapret Windows Türkiye
 
-Bu programın amacı, Türk kullanıcılar için DPI (Deep Packet Inspection / Derin Paket İncelemesi) tabanlı internet sansürlerini ve kısıtlamalarını atlatmak amacıyla geliştirilmiş olan [zapret-win-bundle](https://github.com/bol-van/zapret-win-bundle) projesinin kullanımını en kolay ve kararlı hale getirmektir.
+Bu programın amacı, Türk kullanıcılar için DPI (Deep Packet Inspection / Derin Paket İncelemesi) tabanlı internet sansürlerini ve kısıtlamalarını atlatmak amacıyla geliştirilmiş olan [zapret-win-bundle](https://github.com/bol-van/zapret-win-bundle) projesinin kullanımını en kolaylaştırmaktır.
 
 ## 🚀 Programın Özellikleri
 
@@ -36,4 +36,4 @@ Program, arka planda çalışabilecek diğer DPI atlatma araçlarıyla (`Goodbye
 
 - **Zapret** projesinin ana motoru için [@bol-van](https://github.com/bol-van)'a,
 - Otomatik blockcheck mantığı ve ilhamı için [splitwire-turkey](https://github.com/cagritaskn/splitwire-turkey) geliştiricisi [@cagritaskn](https://github.com/cagritaskn)'a,
-- PCAP tabanlı trafiği SOCKS5 proxy'ye yönlendiren şahane motoru için [go-pcap2socks](https://github.com/DaniilSokolyuk/go-pcap2socks) projesinin geliştiricisi [@DaniilSokolyuk](https://github.com/DaniilSokolyuk)'a teşekkür ederiz.
+- [go-pcap2socks](https://github.com/DaniilSokolyuk/go-pcap2socks) projesinin geliştiricisi [@DaniilSokolyuk](https://github.com/DaniilSokolyuk)'a teşekkür ederiz.
