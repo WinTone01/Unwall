@@ -5,7 +5,7 @@
 
 Bu programın amacı, Türk kullanıcılar için DPI (Deep Packet Inspection / Derin Paket İncelemesi) tabanlı internet sansürlerini ve kısıtlamalarını atlatmak amacıyla geliştirilmiş olan [zapret-win-bundle](https://github.com/bol-van/zapret-win-bundle) projesinin kullanımını en kolaylaştırmaktır.
 
-## 🚀 Programın Özellikleri
+## Programın Özellikleri
 
 - **DNS Kontrolü:** ISS tarafından DNS'inize müdahale ediliyorsa tespiti yapılır. DNS'i sağlama almak için YogaDNS kurmanızı ve Google DoH ayarlamanızı öneririm.
 - **Blockcheck:** ISS'niz için çalışan stratejiyi bulmak için blockcheck yapabilirsiniz.
@@ -14,9 +14,9 @@ Bu programın amacı, Türk kullanıcılar için DPI (Deep Packet Inspection / D
 - **Manuel Kullanım:** "Zapret'i Başlat" seçeneği ile program içinden anlık kullanım sağlar. Program kapatıldığında tüm süreçler temizlenir.
 - **Servis Desteği:** "Servis Olarak Yükle" butonu ile Windows Servisi olarak kurma imkanı sunar. Bilgisayar her açıldığında otomatik başlar. Bu programın açılmasına gerek kalmaz.
 - **Hostlist Desteği:** Sadece sansürlü siteleri listeye ekleyerek (otomatik veya manuel) filtreleme yapar; normal internet trafiğinizi kesinlikle yormaz.
-- **🔥 Ağdaki Cihazlarla Paylaş (v3.5.0):** `go-pcap2socks` entegrasyonu sayesinde, bilgisayarınızda çalışan Zapret motorunu yerel ağdaki diğer cihazlarınızla (PlayStation, Xbox, Nintendo Switch, Akıllı TV vb.) paylaşmanızı sağlar. Konsollarda Discord ve Roblox gibi erişim engellerini aşmanın en kararlı yoludur.
+- **Ağdaki Cihazlarla Paylaş (v3.5.0):** `go-pcap2socks` entegrasyonu sayesinde, bilgisayarınızda çalışan Zapret motorunu yerel ağdaki diğer cihazlarınızla (PlayStation, Xbox, Nintendo Switch, Akıllı TV vb.) paylaşmanızı sağlar. Konsollarda Discord ve Roblox gibi erişim engellerini aşmanın en kararlı yoludur.
 
-## 🛠️ Yerel Ağ Paylaşımı (Konsol / Diğer Cihazlar) Kurulumu
+## Yerel Ağ Paylaşımı (Konsol / Diğer Cihazlar) Kurulumu
 
 "Ağdaki Cihazlarla Paylaş" özelliğini kullanabilmek için bilgisayarınızda **[Npcap](https://npcap.com/)** sürücüsünün kurulu olması gerekmektedir. 
 
@@ -28,7 +28,7 @@ Bu programın amacı, Türk kullanıcılar için DPI (Deep Packet Inspection / D
 - **Birincil DNS (Primary DNS):** `1.1.1.1`
 - **İkincil DNS (Secondary DNS):** `8.8.8.8`
 
-## ⚠️ Çakışma Önleme
+## Çakışma Önleme
 
 Program, arka planda çalışabilecek diğer DPI atlatma araçlarıyla (`GoodbyeDPI` vb.) veya eski `WinDivert` sürücü kalıntılarıyla çakışmaları otomatik olarak tespit eder, temizler ve güvenli bir açılış sağlar.
 
