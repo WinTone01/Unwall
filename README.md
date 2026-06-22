@@ -32,7 +32,7 @@ Bu programın amacı, Türk kullanıcılar için DPI (Deep Packet Inspection / D
 
 Program, arka planda çalışabilecek diğer DPI atlatma araçlarıyla (`GoodbyeDPI` vb.) veya eski `WinDivert` sürücü kalıntılarıyla çakışmaları otomatik olarak tespit eder, temizler ve güvenli bir açılış sağlar.
 
-## 🙏 Teşekkürler
+## Teşekkürler
 
 - **Zapret** projesinin ana motoru için [@bol-van](https://github.com/bol-van)'a,
 - Otomatik blockcheck mantığı ve ilhamı için [splitwire-turkey](https://github.com/cagritaskn/splitwire-turkey) geliştiricisi [@cagritaskn](https://github.com/cagritaskn)'a,
