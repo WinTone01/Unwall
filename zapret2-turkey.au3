@@ -3,8 +3,8 @@
 #AutoIt3Wrapper_Icon=zapret\zapret-winws\winws2.ico
 #AutoIt3Wrapper_UseX64=y
 #AutoIt3Wrapper_Res_Description=Zapret Multi-Engine Windows Türkiye - Zapret v1 & v2 Kontrol Aracı
-#AutoIt3Wrapper_Res_Fileversion=3.5.0.0
-#AutoIt3Wrapper_Res_ProductVersion=3.5
+#AutoIt3Wrapper_Res_Fileversion=3.5.1.0
+#AutoIt3Wrapper_Res_ProductVersion=3.5.1
 #AutoIt3Wrapper_Res_LegalCopyright=Ali Mali
 #AutoIt3Wrapper_Res_Language=1055
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
@@ -75,7 +75,7 @@ Global $zapretPID = 0
 Global $pcapPID = 0
 
 ; --- GUI Tasarımı ---
-Local $hGUI = GUICreate("Zapret Windows Türkiye v3.5", 400, 540) ; Strateji Combo alanı için boyutu 590 yaptık
+Local $hGUI = GUICreate("Zapret Windows Türkiye v3.5.1", 400, 540) ; Strateji Combo alanı için boyutu 590 yaptık
 GUISetBkColor(0xFFFFFF)
 
 ; --- Tepsi Menüsü ---
@@ -362,7 +362,7 @@ WEnd
 Func _LoadStrategyList($sDefaultToSelect)
     GUICtrlSetData($cmbStrategy, "") ; İçeriği sıfırla
     If $currentEngine == "Zapret2" Then
-        GUICtrlSetData($cmbStrategy, "Analiz Sonucu|Turk Telekom|Superonline|Vodafone|Vodafone (TT Altyapı)", $sDefaultToSelect)
+        GUICtrlSetData($cmbStrategy, "Analiz Sonucu|Turk Telekom|Superonline|Vodafone", $sDefaultToSelect)
     Else
         GUICtrlSetData($cmbStrategy, "Analiz Sonucu|Turk Telekom|TT Alternatif|Superonline|SOL Alternatif|Turkcell Mobil|Vodafone Mobil", $sDefaultToSelect)
     EndIf
@@ -382,10 +382,8 @@ Func _GetActiveStrategyString()
             Case "Superonline"
                 Return "--payload=tls_client_hello --lua-desync=multidisorder:pos=2:seqovl=1"
             Case "Vodafone"
-                Return '--lua-init=fake_default_tls="tls_mod(fake_default_tls,''rnd'')" --lua-desync="multisplit:pos=10,sniext+1:seqovl=#fake_default_tls"'
-			Case "Vodafone (TT Altyapı)"
-                Return '--lua-desync="wssize:wsize=1:scale=6" --lua-desync="luaexec:code=desync.patmod=tls_mod(fake_default_tls,''rnd,dupsid,padencap'',desync.reasm_data)" --lua-desync="tcpseg:pos=0,-1:seqovl=#patmod:seqovl_pattern=patmod" --lua-desync="drop"'
-        EndSwitch
+                Return '--payload=tls_client_hello --lua-desync=multisplit:blob=fake_default_tls:ip_ttl=5:pos=2:nodrop:repeats=1'
+			EndSwitch
     Else ; Zapret1 Sürümü
         Switch $sel
             Case "Turk Telekom"
