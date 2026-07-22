@@ -439,10 +439,24 @@ Func _SetSystemDNS($bEnableDoH = False)
 EndFunc
 
 Func _ResetSystemDNS()
-    ; Aktif ağ bağdaştırıcısını bul, DNS ayarlarını otomatiğe (DHCP) al ve önbelleği temizle
-    Local $psScript = "$adapter = Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Select-Object -First 1; " & _
-                      "Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ResetServerAddresses; " & _
-                      "ipconfig /flushdns;"
+    Local $winVer = _GetWindowsVersion() ; İşletim sistemini sorgula
+
+    ; Aktif ağ bağdaştırıcısını bul
+    Local $psScript = "$adapter = Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Select-Object -First 1; "
+
+    ; Sadece Windows 11 ise senin bulduğun DoH kapatma komutunu ve Reg temizliğini uygula
+    If $winVer == 11 Then
+        ; 1. Resmi yöntemle DoH'u devre dışı bırak
+        $psScript &= "Set-DnsClientDohServerAddress -ServerAddress '1.1.1.1' -DohTemplate 'https://cloudflare-dns.com/dns-query' -AutoUpgrade $false -AllowFallbackToUdp $true; "
+
+        ; 2. Kalıntı kalmaması için Registry anahtarını da uçur
+        $psScript &= "$regPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\' + $adapter.InterfaceGuid + '\DohInterfaceSettings\Doh\1.1.1.1'; " & _
+                     "If (Test-Path $regPath) { Remove-Item -Path $regPath -Recurse -Force }; "
+    EndIf
+
+    ; Her iki sistem için: DNS'i otomatiğe (DHCP) al ve DNS önbelleğini sıfırla
+    $psScript &= "Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ResetServerAddresses; " & _
+                 "ipconfig /flushdns;"
 
     RunWait('powershell -NoProfile -ExecutionPolicy Bypass -Command "' & $psScript & '"', "", @SW_HIDE)
 EndFunc
