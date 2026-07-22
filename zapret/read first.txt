@@ -1,0 +1,2 @@
+Paste the contents of zapret-win-bundle here.
+DO NOT OVERRIDE blockcheck.sh and blockcheck2.sh
