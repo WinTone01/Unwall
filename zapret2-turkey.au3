@@ -2,9 +2,9 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Icon=zapret\zapret-winws\winws2.ico
 #AutoIt3Wrapper_UseX64=y
-#AutoIt3Wrapper_Res_Description=Zapret Multi-Engine Windows Türkiye - Zapret v1 & v2 Kontrol Aracı
-#AutoIt3Wrapper_Res_Fileversion=3.5.1.0
-#AutoIt3Wrapper_Res_ProductVersion=3.5.1
+#AutoIt3Wrapper_Res_Description=Zapret Multi-Engine Windows Türkiye - Zapret & Zapret2 Kontrol Aracı
+#AutoIt3Wrapper_Res_Fileversion=3.7.0.0
+#AutoIt3Wrapper_Res_ProductVersion=3.7
 #AutoIt3Wrapper_Res_LegalCopyright=Ali Mali
 #AutoIt3Wrapper_Res_Language=1055
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
@@ -55,6 +55,7 @@ Local $serviceName = "ZapretService"
 Local $hostlistPath = @ScriptDir & "\autohostlist.txt"
 Local $normalHostlistPath = @ScriptDir & "\hostlist.txt"
 Local $iniPath = @ScriptDir & "\config.ini"
+Local $exludelistPath = @ScriptDir & "\excludelist.txt"
 
 ; --- CONFIG DOSYASINDAN AYARLARI OKU ---
 Local $iniEngine = IniRead($iniPath, "Settings", "ActiveEngine", "0") ; 0 = Zapret2, 1 = Zapret1
@@ -75,7 +76,7 @@ Global $zapretPID = 0
 Global $pcapPID = 0
 
 ; --- GUI Tasarımı ---
-Local $hGUI = GUICreate("Zapret Windows Türkiye v3.5.1", 400, 540) ; Strateji Combo alanı için boyutu 590 yaptık
+Local $hGUI = GUICreate("Zapret Windows Türkiye v3.7", 400, 540)
 GUISetBkColor(0xFFFFFF)
 
 ; --- Tepsi Menüsü ---
@@ -112,22 +113,21 @@ EndIf
 GUICtrlSetFont(-1, 9, 400, 0, "Segoe UI")
 GUICtrlSetState(-1, $GUI_DISABLE)
 
-; --- STRATEJİ SEÇİM DROPDOWN (YENİ EKLEME) ---
+; --- STRATEJİ SEÇİM DROPDOWN ---
 GUICtrlCreateLabel("Strateji:", 50, 148, 120, 20)
 GUICtrlSetFont(-1, 9, 600, 0, "Segoe UI")
 Global $cmbStrategy = GUICtrlCreateCombo("Analiz Sonucu", 175, 145, 175, 25, $CBS_DROPDOWNLIST)
 GUICtrlSetFont(-1, 9, 400, 0, "Segoe UI")
 GUICtrlSetState(-1, $GUI_DISABLE)
 
-; --- Butonlar (Koordinatları aşağı kaydırıldı) ---
+; --- Butonlar ---
 Local $btnRunZapret = GUICtrlCreateButton("ZAPRET'İ BAŞLAT", 50, 185, 300, 55)
 GUICtrlSetState(-1, $GUI_DISABLE)
 GUICtrlSetFont(-1, 11, 800, 0, "Segoe UI")
 
-; --- LAN PAYLAŞIM CHECKBOX (YENİ) ---
-; ISS Analizi butonunun hemen üstüne, butonlarla aynı X hizasına (50) yerleşti.
+; --- LAN PAYLAŞIM CHECKBOX ---
 Global $chkLanShare = GUICtrlCreateCheckbox(" Ağdaki Cihazlarla Paylaş", 55, 240, 290, 25)
-GUICtrlSetState(-1, $GUI_DISABLE) ; <--- İlk açılışta kilitli başlasın
+GUICtrlSetState(-1, $GUI_DISABLE)
 GUICtrlSetFont(-1, 9, 800, 0, "Segoe UI")
 
 ; --- HOSTLIST HİBRİT PANELİ ---
@@ -172,21 +172,62 @@ GUISetState(@SW_SHOW)
 _UpdateEnginePaths(GUICtrlRead($cmbEngine))
 _LoadStrategyList($iniStrategy)
 
-; --- GÜVENLİ AÇILIŞ AKIŞI ---
+; --- GÜVENLİ AÇILIŞ AKIŞI VE DİNAMİK DNS ZEHİRLENMESİ KONTROL DÖNGÜSÜ ---
 RunWait(@ComSpec & " /c sc stop WinDivert & sc delete WinDivert & sc stop WinDivert14 & sc delete WinDivert14", "", @SW_HIDE)
 GUICtrlSetData($lblStatusText, "DNS KONTROL EDİLİYOR...")
 
-Local $isPoisoned = CheckDnsPoisoningSilent()
+Local $isDnsChangedByApp = False ; Kullanıcının onay verip verip DNS değiştirdiğini takip eder
 
-If $isPoisoned Then
-    _SetButtonsState($aCriticalButtons, $GUI_DISABLE)
-    GUICtrlSetData($lblStatusText, "DNS ZEHİRLENMESİ SAPTANDI!")
-    GUICtrlSetColor($lblStatusText, 0xC0392B)
-    MsgBox(16 + 8192, "Kritik Uyarı", "ISS tarafından DNS Zehirlenmesi saptandı! Lütfen DNS değiştirin.")
-Else
-    CheckServiceStatus($btnRunZapret, $lblStatusText, $aCriticalButtons, $chkAutoHost)
-    _RefreshStrategyLabel()
-EndIf
+While 1
+    Local $isPoisoned = CheckDnsPoisoningSilent()
+
+    If $isPoisoned Then
+        _SetButtonsState($aCriticalButtons, $GUI_DISABLE)
+        GUICtrlSetData($lblStatusText, "DNS ZEHİRLENMESİ SAPTANDI!")
+        GUICtrlSetColor($lblStatusText, 0xC0392B)
+
+        ; Eğer daha önce otomatik DNS değişimi yaptıysak ama hala zehirlenme varsa
+        If $isDnsChangedByApp Then
+            MsgBox(16 + 8192, "Kritik Uyarı", "DNS değişikliği işe yaramadı!" & @CRLF & @CRLF & _
+                    "İnternet Servis Sağlayıcınız standart DNS sorgularını engelliyor olabilir." & @CRLF & _
+                    "Lütfen YogaDNS veya benzeri bir şifreli DNS client'ı kullanıp tekrar deneyin.")
+            ExitLoop
+        EndIf
+
+        ; İşletim Sistemi Tespiti
+        Local $winVer = _GetWindowsVersion() ; 10 veya 11 döner
+        Local $iAsk = 7 ; 6 = Evet, 7 = Hayır
+
+        If $winVer == 11 Then
+            $iAsk = MsgBox(36 + 8192, "DNS Zehirlenmesi Saptandı", _
+                    "ISS tarafından DNS Zehirlenmesi saptandı!" & @CRLF & @CRLF & _
+                    "Windows 11 kullandığınız tespit edildi (Dahili Şifreli DoH Desteği Var)." & @CRLF & @CRLF & _
+                    "Sistem DNS adresiniz otomatik olarak Cloudflare DoH (Şifreli DNS) olarak ayarlansın mı?")
+        Else
+            $iAsk = MsgBox(36 + 8192, "DNS Zehirlenmesi Saptandı", _
+                    "ISS tarafından DNS Zehirlenmesi saptandı!" & @CRLF & @CRLF & _
+                    "Windows 10 kullandığınız tespit edildi." & @CRLF & @CRLF & _
+                    "Sistem DNS adresiniz Cloudflare (1.1.1.1 / 1.0.0.1) olarak ayarlansın mı?")
+        EndIf
+
+        If $iAsk = 6 Then ; EVET DENİLDİ
+            GUICtrlSetData($lblStatusText, "DNS AYARLANIYOR...")
+            _SetSystemDNS(($winVer == 11)) ; Win11 ise DoH aktifleştirir
+            $isDnsChangedByApp = True
+            GUICtrlSetData($lblStatusText, "RE-CHECK DNS...")
+            Sleep(1000)
+            ContinueLoop ; Döngüyü başa sar, DNS zehirlenmesini tekrar kontrol et
+        Else ; HAYIR DENİLDİ
+            MsgBox(48 + 8192, "DNS Uyarısı", "Lütfen DNS adreslerinizi elle değiştirin veya YogaDNS kullanın.")
+            ExitLoop
+        EndIf
+    Else
+        ; Zehirlenme yoksa her şey normal devam etsin
+        CheckServiceStatus($btnRunZapret, $lblStatusText, $aCriticalButtons, $chkAutoHost)
+        _RefreshStrategyLabel()
+        ExitLoop
+    EndIf
+WEnd
 
 ; --- Ana Döngü ---
 While 1
@@ -194,14 +235,11 @@ While 1
 
 	; --- LAN PAYLAŞIM CHECKBOX AKTİFLİK VE TİK KONTROLÜ ---
     If ProcessExists("winws.exe") Or ProcessExists("winws2.exe") Then
-        ; Zapret çalışıyorsa ve kutu kilitliyse, kilidi aç
         If BitAND(GUICtrlGetState($chkLanShare), $GUI_DISABLE) Then GUICtrlSetState($chkLanShare, $GUI_ENABLE)
     Else
-        ; Zapret çalışmıyorsa kutuyu kilitle
         If BitAND(GUICtrlGetState($chkLanShare), $GUI_ENABLE) Then
             GUICtrlSetState($chkLanShare, $GUI_DISABLE)
 
-            ; EĞER TİK VARSA: Tiki kaldır ve go-pcap2socks çalışıyorsa onu da kapat
             If GUICtrlRead($chkLanShare) = $GUI_CHECKED Then
                 GUICtrlSetState($chkLanShare, $GUI_UNCHECKED)
                 If ProcessExists("go-pcap2socks.exe") Then
@@ -222,7 +260,7 @@ While 1
 
         Case $cmbEngine
             _UpdateEnginePaths(GUICtrlRead($cmbEngine))
-            _LoadStrategyList("Analiz Sonucu") ; Motor değişince listeyi yenile
+            _LoadStrategyList("Analiz Sonucu")
             CheckServiceStatus($btnRunZapret, $lblStatusText, $aCriticalButtons, $chkAutoHost)
             _RefreshStrategyLabel()
 
@@ -239,7 +277,7 @@ While 1
             EndIf
 
 		Case $btnAnalyze
-            Local $iConfirm = MsgBox(33, "Bilgi", "Analiz işlemi 5-10 dakika sürebilir." & @CRLF & "Lütfen bitene kadar bekleyin.")
+            Local $iConfirm = MsgBox(33 + 8192, "Bilgi", "Analiz işlemi 5-10 dakika sürebilir." & @CRLF & "Lütfen bitene kadar bekleyin.")
             If $iConfirm = 1 Then
                 _SetButtonsState($aCriticalButtons, $GUI_DISABLE)
                 GUICtrlSetState($btnRemoveService, $GUI_DISABLE)
@@ -306,21 +344,18 @@ While 1
                     $pcapPID = Run('"' & $targetPcapExe & '"', @ScriptDir & '\go-pcap2socks', @SW_HIDE)
                 EndIf
 
-                ; --- YENİ: GERÇEKTEN ÇALIŞIYOR MU KONTROLÜ (SİGORTA) ---
-                ; Sürecin ayağa kalkıp kararlı hale gelmesi için çok kısa bir süre (yarım saniye) avans veriyoruz
+                ; --- GERÇEKTEN ÇALIŞIYOR MU KONTROLÜ ---
                 Sleep(500)
 
                 If Not ProcessExists("go-pcap2socks.exe") Then
-                    ; Eğer exe ayağa kalkamadıysa veya anında çöktüyse
-                    GUIDelete($hSplash) ; Önce splash ekranını kapat
-                    GUICtrlSetState($chkLanShare, $GUI_UNCHECKED) ; Tiki hemen geri çek
+                    GUIDelete($hSplash)
+                    GUICtrlSetState($chkLanShare, $GUI_UNCHECKED)
                     $pcapPID = 0
                     MsgBox(16 + 8192, "Başlatma Hatası", "HATA: go-pcap2socks başlatılamadı!" & @CRLF & @CRLF & _
                             "• Sanal bir ağ kartı oluşturan VPN vb program kullanıyorsanız kapatın.")
-                    ContinueLoop ; Döngüyü başa sar, aşağıdaki ağ şemasını gösterme
+                    ContinueLoop
                 EndIf
 
-                ; Her şey yolundaysa splash'ı sil ve devam et
                 GUIDelete($hSplash)
 
                 MsgBox(8256, "go-pcap2socks Ağ Yapılandırması", _
@@ -331,7 +366,6 @@ While 1
                         "• DNS 1: 1.1.1.1" & @CRLF & _
                         "• DNS 2: 8.8.8.8")
             Else
-                ; --- TİK KALDIRILDI: go-pcap2socks.exe KAPATILIYOR ---
                 If ProcessExists("go-pcap2socks.exe") Then
                     ProcessClose("go-pcap2socks.exe")
                     $pcapPID = 0
@@ -349,26 +383,80 @@ While 1
             InstallServiceClean($chkAutoHost)
             CheckServiceStatus($btnRunZapret, $lblStatusText, $aCriticalButtons, $chkAutoHost)
 
-        Case $btnRemoveService
+		Case $btnRemoveService
             RemoveService()
+
+            ; --- YENİ EKLENEN ADIM: DNS'i Otomatiğe (DHCP) Al ---
+            GUICtrlSetData($lblStatusText, "SİSTEM SIFIRLANIYOR...")
+            _ResetSystemDNS()
+
             $isPoisoned = CheckDnsPoisoningSilent()
             If Not $isPoisoned Then CheckServiceStatus($btnRunZapret, $lblStatusText, $aCriticalButtons, $chkAutoHost)
             _RefreshStrategyLabel()
-            MsgBox(64, "Bilgi", "Temizlik tamamlandı.")
+            MsgBox(64 + 8192, "Bilgi", "Temizlik tamamlandı ve DNS ayarları otomatiğe (DHCP) alındı.")
+
+			If $isPoisoned Then
+				_SetButtonsState($aCriticalButtons, $GUI_DISABLE)
+				GUICtrlSetData($lblStatusText, "DNS ZEHİRLENMESİ SAPTANDI!")
+				GUICtrlSetColor($lblStatusText, 0xC0392B)
+			Else
+				CheckServiceStatus($btnRunZapret, $lblStatusText, $aCriticalButtons, $chkAutoHost)
+				_RefreshStrategyLabel()
+			EndIf
     EndSwitch
 WEnd
 
+; --- YENİ YARDIMCI FONKSİYONLAR ---
+
+Func _GetWindowsVersion()
+    ; Windows 11 Build numaraları 22000 ve üzeri ile başlar
+    Local $sBuild = RegRead("HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuild")
+    If Int($sBuild) >= 22000 Then
+        Return 11
+    Else
+        Return 10
+    EndIf
+EndFunc
+
+Func _SetSystemDNS($bEnableDoH = False)
+    ; PowerShell komut dizisini oluşturuyoruz. (Tırnak çakışmalarını önlemek için PS içinde tek tırnak kullanıldı)
+    Local $psScript = "$adapter = Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Select-Object -First 1; " & _
+                      "Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses '1.1.1.1'; "
+
+    If $bEnableDoH Then
+        ; DoH şablonunu ayarla ve Regedit üzerinden GUID ile DoH'u zorla aktif et
+        $psScript &= "Set-DnsClientDohServerAddress -ServerAddress '1.1.1.1' -DohTemplate 'https://cloudflare-dns.com/dns-query' -AutoUpgrade $true -AllowFallbackToUdp $false; " & _
+                     "$regPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\' + $adapter.InterfaceGuid + '\DohInterfaceSettings\Doh\1.1.1.1'; " & _
+                     "New-Item -Path $regPath -Force | Out-Null; " & _
+                     "New-ItemProperty -Path $regPath -Name 'DohFlags' -Value 1 -PropertyType QWORD -Force | Out-Null; "
+    EndIf
+
+    ; DNS önbelleğini (cache) temizle ki yeni ayarlar hemen devreye girsin
+    $psScript &= "ipconfig /flushdns;"
+
+    ; Komutu arka planda kısıtlamaları (Bypass) aşarak çalıştır
+    RunWait('powershell -NoProfile -ExecutionPolicy Bypass -Command "' & $psScript & '"', "", @SW_HIDE)
+EndFunc
+
+Func _ResetSystemDNS()
+    ; Aktif ağ bağdaştırıcısını bul, DNS ayarlarını otomatiğe (DHCP) al ve önbelleği temizle
+    Local $psScript = "$adapter = Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Select-Object -First 1; " & _
+                      "Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ResetServerAddresses; " & _
+                      "ipconfig /flushdns;"
+
+    RunWait('powershell -NoProfile -ExecutionPolicy Bypass -Command "' & $psScript & '"', "", @SW_HIDE)
+EndFunc
+
 ; --- MOTORA GÖRE HAZIR STRATEJİ LİSTESİNİ DOLDURAN FONKSİYON ---
 Func _LoadStrategyList($sDefaultToSelect)
-    GUICtrlSetData($cmbStrategy, "") ; İçeriği sıfırla
+    GUICtrlSetData($cmbStrategy, "")
     If $currentEngine == "Zapret2" Then
-        GUICtrlSetData($cmbStrategy, "Analiz Sonucu|Turk Telekom|Superonline|Vodafone", $sDefaultToSelect)
+        GUICtrlSetData($cmbStrategy, "Analiz Sonucu|Turk Telekom|Superonline|Vodafone|Telekom Mobil", $sDefaultToSelect)
     Else
         GUICtrlSetData($cmbStrategy, "Analiz Sonucu|Turk Telekom|TT Alternatif|Superonline|SOL Alternatif|Turkcell Mobil|Vodafone Mobil", $sDefaultToSelect)
     EndIf
 EndFunc
 
-; --- SEÇİLEN PROFILE GÖRE PARAMETRE DÖNDÜREN SİHİRBAZ ---
 Func _GetActiveStrategyString()
     Local $sel = GUICtrlRead($cmbStrategy)
     If $sel == "Analiz Sonucu" Then
@@ -383,8 +471,10 @@ Func _GetActiveStrategyString()
                 Return "--payload=tls_client_hello --lua-desync=multidisorder:pos=2:seqovl=1"
             Case "Vodafone"
                 Return '--payload=tls_client_hello --lua-desync=multisplit:blob=fake_default_tls:ip_ttl=5:pos=2:nodrop:repeats=1'
+			Case "Telekom Mobil"
+                Return '--payload=tls_client_hello --lua-desync=fake:blob=0x00000000:ip_ttl=5:repeats=1'
 			EndSwitch
-    Else ; Zapret1 Sürümü
+    Else
         Switch $sel
             Case "Turk Telekom"
                 Return "--dpi-desync=fake --dpi-desync-ttl=4"
@@ -432,7 +522,7 @@ Func _UpdateEnginePaths($sEngineSelected)
         $winwsPath = @ScriptDir & "\zapret\zapret-winws\winws2.exe"
         $blockcheckPath = @ScriptDir & "\zapret\blockcheck\blockcheck2.cmd"
         $logPath = @ScriptDir & "\zapret\blockcheck\blockcheck2.log"
-        GUICtrlSetData($lblFooter, "Zapret2 v0.9.5.2")
+        GUICtrlSetData($lblFooter, "Zapret2 v1.0.2")
     Else
         $currentEngine = "Zapret1"
         $strategyFile = @ScriptDir & "\strategy.txt"
@@ -455,7 +545,6 @@ EndFunc
 
 Func ExitApp()
     If $isZapretRunning Then StopWinws($btnRunZapret, $lblStatusText, $aOtherButtons)
-	; --- PROGRAM KAPATILIRKEN PCAP MOTORUNU DA ÖLDÜR ---
     If ProcessExists("go-pcap2socks.exe") Then ProcessClose("go-pcap2socks.exe")
     Exit
 EndFunc
@@ -514,7 +603,6 @@ Func CheckServiceStatus($manualBtn, $statusID, $lockArray, $chkID)
         GUICtrlSetState($manualBtn, $GUI_ENABLE)
         _SetButtonsState($lockArray, $GUI_ENABLE)
 
-		; --- LAN PAYLAŞIM TUŞUNU BURADA AKTİF EDİYORUZ ---
         GUICtrlSetState($chkLanShare, $GUI_ENABLE)
 
         If GUICtrlRead($chkID) = $GUI_CHECKED Then
@@ -530,7 +618,6 @@ Func CheckServiceStatus($manualBtn, $statusID, $lockArray, $chkID)
 EndFunc
 
 Func StartWinws($ctrlID, $statusID, $aBtns)
-    ; --- DİNAMİK STRATEJİ SEÇİCİ TETİKLENDİ ---
     Local $activeStrategy = _GetActiveStrategyString()
     If $activeStrategy = "" Then Return MsgBox(48 + 8192, "Hata", "Strateji bulunamadı. Önce analiz yapın.")
 
@@ -541,9 +628,9 @@ Func StartWinws($ctrlID, $statusID, $aBtns)
         Local $luaParams = ' --lua-init="@' & $luaBaseDir & 'zapret-lib.lua"' & _
                            ' --lua-init="@' & $luaBaseDir & 'zapret-antidpi.lua"' & _
                            ' --lua-init="@' & $luaBaseDir & 'zapret-auto.lua"'
-        $fullCommand = '"' & $winwsPath & '" --wf-l3=ipv4 --wf-tcp-out=0-65535 --wf-udp-out=0-65535 ' & $activeStrategy & $luaParams
+        $fullCommand = '"' & $winwsPath & '" --wf-l3=ipv4 --wf-tcp-out=0-65535 --wf-udp-out=0-65535 --hostlist-exclude="' & $exludelistPath & '" ' & $activeStrategy & $luaParams
     Else
-        $fullCommand = '"' & $winwsPath & '" --wf-tcp=0-65535 --wf-udp=0-65535 ' & $activeStrategy
+        $fullCommand = '"' & $winwsPath & '" --wf-tcp=0-65535 --wf-udp=0-65535  --hostlist-exclude="' & $exludelistPath & '" ' & $activeStrategy
     EndIf
 
     If GUICtrlRead($chkAutoHost) = $GUI_CHECKED Then
@@ -590,9 +677,9 @@ Func InstallServiceClean($chkID)
         Local $luaParams = ' --lua-init="@' & $luaBaseDir & 'zapret-lib.lua"' & _
                            ' --lua-init="@' & $luaBaseDir & 'zapret-antidpi.lua"' & _
                            ' --lua-init="@' & $luaBaseDir & 'zapret-auto.lua"'
-        $binArgs = '--wf-l3=ipv4 --wf-tcp-out=0-65535 --wf-udp-out=0-65535 ' & $activeStrategy & $luaParams
+        $binArgs = '--wf-l3=ipv4 --wf-tcp-out=0-65535 --wf-udp-out=0-65535 --hostlist-exclude="' & $exludelistPath & '" ' & $activeStrategy & $luaParams
     Else
-        $binArgs = '--wf-tcp=0-65535 --wf-udp=0-65535 ' & $activeStrategy
+        $binArgs = '--wf-tcp=0-65535 --wf-udp=0-65535 --hostlist-exclude="' & $exludelistPath & '" ' & $activeStrategy
     EndIf
 
     If GUICtrlRead($chkID) = $GUI_CHECKED Then
@@ -777,14 +864,12 @@ Func HasValidStrategy()
     Return ($sContent <> "")
 EndFunc
 
-; --- Güvenlik Duvarı Sorgu Fonksiyonu (Gelişmiş İzin Kontrolü - Düzeltildi) ---
+; --- Güvenlik Duvarı Sorgu Fonksiyonu ---
 Func HasFirewallRule($fullPath)
-    ; Önce exe yoluna ait olan kural filtrelerini buluyoruz, ardından bu filtrelere bağlı ana kuralların 'Allow' ve 'True' olup olmadığına bakıyoruz.
 	Local $fixedPath = StringReplace($fullPath, "I", "i")
 	Local $psCmd = 'powershell -NoProfile -Command "Get-NetFirewallApplicationFilter -Program ''' & $fixedPath & ''' -ErrorAction SilentlyContinue | Get-NetFirewallRule | Where-Object { $_.Action -eq ''Allow'' -and $_.Enabled -eq ''True'' }"'
 	Local $iPID = Run(@ComSpec & ' /c ' & $psCmd, "", @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPID)
 
-    ; Eğer kural hem mevcutsa hem de durumu 'Allow' (İzin Ver) ve 'True' (Etkin) ise PowerShell çıktı üretir.
     Return (StringLen(StdoutRead($iPID)) > 10)
 EndFunc
