@@ -1,3 +1,14 @@
+> # 🚨 ÖNEMLİ UYARI: MUTLAKA YOGADNS KULLANIN! 🚨
+> 
+> Lütfen programı **YogaDNS** ile birlikte kullanın.
+> 
+> Windows içinden DoH (Şifreli DNS) ayarlasanız bile, özellikle **Telekom** altyapısında program DNS zehirlenmesini arka planda anlayamaz ve herhangi bir hata vermez. Bu durumda Discord **"Starting..."** (Başlatılıyor) kısmında takılı kalır ve programın çalışmadığını zannedebilirsiniz.
+> 
+> Aslında sistemde eksik olan tek şey, trafiği düzgün yönlendirecek iyi bir DNS aracıdır. **YogaDNS** küçücük bir yazılımdır; arka planda sessizce çalışır, CPU ve RAM kullanımı neredeyse hiç yoktur.
+> 
+> 👉 **[YogaDNS'i Buradan İndirip Kurabilirsiniz (yogadns.com)](https://yogadns.com/download/)**
+
+
 <img width="402" height="567" alt="image" src="https://github.com/user-attachments/assets/5c50ee40-ce9e-4ddd-9a08-31bf943cd75c" />
 
 
