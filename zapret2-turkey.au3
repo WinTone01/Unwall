@@ -3,8 +3,8 @@
 #AutoIt3Wrapper_Icon=zapret\zapret-winws\winws2.ico
 #AutoIt3Wrapper_UseX64=y
 #AutoIt3Wrapper_Res_Description=Zapret Multi-Engine Windows Türkiye - Zapret & Zapret2 Kontrol Aracı
-#AutoIt3Wrapper_Res_Fileversion=3.7.0.0
-#AutoIt3Wrapper_Res_ProductVersion=3.7
+#AutoIt3Wrapper_Res_Fileversion=3.7.1.0
+#AutoIt3Wrapper_Res_ProductVersion=3.7.1
 #AutoIt3Wrapper_Res_LegalCopyright=Ali Mali
 #AutoIt3Wrapper_Res_Language=1055
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
@@ -76,7 +76,7 @@ Global $zapretPID = 0
 Global $pcapPID = 0
 
 ; --- GUI Tasarımı ---
-Local $hGUI = GUICreate("Zapret Windows Türkiye v3.7", 400, 540)
+Local $hGUI = GUICreate("Zapret Windows Türkiye v3.7.1", 400, 540)
 GUISetBkColor(0xFFFFFF)
 
 ; --- Tepsi Menüsü ---
@@ -176,7 +176,7 @@ _LoadStrategyList($iniStrategy)
 RunWait(@ComSpec & " /c sc stop WinDivert & sc delete WinDivert & sc stop WinDivert14 & sc delete WinDivert14", "", @SW_HIDE)
 GUICtrlSetData($lblStatusText, "DNS KONTROL EDİLİYOR...")
 
-Local $isDnsChangedByApp = False ; Kullanıcının onay verip verip DNS değiştirdiğini takip eder
+Local $isDnsChangedByApp = False
 
 While 1
     Local $isPoisoned = CheckDnsPoisoningSilent()
@@ -186,38 +186,36 @@ While 1
         GUICtrlSetData($lblStatusText, "DNS ZEHİRLENMESİ SAPTANDI!")
         GUICtrlSetColor($lblStatusText, 0xC0392B)
 
-        ; Eğer daha önce otomatik DNS değişimi yaptıysak ama hala zehirlenme varsa
+        ; 2. TUR: Uygulama DNS değiştirdi ama hala zehirliyse (TT engelliyorsa)
         If $isDnsChangedByApp Then
-            MsgBox(16 + 8192, "Kritik Uyarı", "DNS değişikliği işe yaramadı!" & @CRLF & @CRLF & _
-                    "İnternet Servis Sağlayıcınız standart DNS sorgularını engelliyor olabilir." & @CRLF & _
-                    "Lütfen YogaDNS veya benzeri bir şifreli DNS client'ı kullanıp tekrar deneyin.")
+            Local $iYoga = MsgBox(16 + 4 + 8192, "Kritik Uyarı", "DNS değişikliği işe yaramadı!" & @CRLF & @CRLF & _
+                    "DNS sızıntılarının tamamen önüne geçmek için YogaDNS tavsiye edilir." & @CRLF & @CRLF & _
+                    "YogaDNS indirme sayfası tarayıcıda açılsın mı?")
+
+            If $iYoga = 6 Then ; 6 = EVET basıldıysa
+				MsgBox(48 + 8192, "YogaDNS indirme sayfası açılacak", _
+                "Açılan sayfadan YogaDNS'i indirip kurun." & @CRLF & _
+                "Kurduktan sonra Google DoH veya Quad9 Dnscrypt seçebilirsiniz." & @CRLF & _
+				"Ardından bu programı tekrar çalıştırın.")
+                ShellExecute("https://yogadns.com/download/")
+            EndIf
+
             ExitLoop
         EndIf
 
-        ; İşletim Sistemi Tespiti
-        Local $winVer = _GetWindowsVersion() ; 10 veya 11 döner
-        Local $iAsk = 7 ; 6 = Evet, 7 = Hayır
+        ; 1. TUR: Zehirlenme ilk kez saptandıysa soru sor
+        Local $iAsk = MsgBox(36 + 8192, "DNS Zehirlenmesi Saptandı", _
+                "ISS tarafından DNS Zehirlenmesi saptandı!" & @CRLF & @CRLF & _
+                "Sistem DNS adresiniz Cloudflare (1.1.1.1 / 1.0.0.1) olarak ayarlansın mı?")
 
-        If $winVer == 11 Then
-            $iAsk = MsgBox(36 + 8192, "DNS Zehirlenmesi Saptandı", _
-                    "ISS tarafından DNS Zehirlenmesi saptandı!" & @CRLF & @CRLF & _
-                    "Windows 11 kullandığınız tespit edildi (Dahili Şifreli DoH Desteği Var)." & @CRLF & @CRLF & _
-                    "Sistem DNS adresiniz otomatik olarak Cloudflare DoH (Şifreli DNS) olarak ayarlansın mı?")
-        Else
-            $iAsk = MsgBox(36 + 8192, "DNS Zehirlenmesi Saptandı", _
-                    "ISS tarafından DNS Zehirlenmesi saptandı!" & @CRLF & @CRLF & _
-                    "Windows 10 kullandığınız tespit edildi." & @CRLF & @CRLF & _
-                    "Sistem DNS adresiniz Cloudflare (1.1.1.1 / 1.0.0.1) olarak ayarlansın mı?")
-        EndIf
-
-        If $iAsk = 6 Then ; EVET DENİLDİ
+        If $iAsk = 6 Then ; EVET
             GUICtrlSetData($lblStatusText, "DNS AYARLANIYOR...")
-            _SetSystemDNS(($winVer == 11)) ; Win11 ise DoH aktifleştirir
+            _SetSystemDNS()
             $isDnsChangedByApp = True
             GUICtrlSetData($lblStatusText, "RE-CHECK DNS...")
             Sleep(1000)
-            ContinueLoop ; Döngüyü başa sar, DNS zehirlenmesini tekrar kontrol et
-        Else ; HAYIR DENİLDİ
+            ContinueLoop ; Döngüyü başa sar, nslookup ile yeni DNS'i test et
+        Else ; HAYIR
             MsgBox(48 + 8192, "DNS Uyarısı", "Lütfen DNS adreslerinizi elle değiştirin veya YogaDNS kullanın.")
             ExitLoop
         EndIf
@@ -408,51 +406,20 @@ WEnd
 
 ; --- YENİ YARDIMCI FONKSİYONLAR ---
 
-Func _GetWindowsVersion()
-    ; Windows 11 Build numaraları 22000 ve üzeri ile başlar
-    Local $sBuild = RegRead("HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuild")
-    If Int($sBuild) >= 22000 Then
-        Return 11
-    Else
-        Return 10
-    EndIf
-EndFunc
 
-Func _SetSystemDNS($bEnableDoH = False)
-    ; PowerShell komut dizisini oluşturuyoruz. (Tırnak çakışmalarını önlemek için PS içinde tek tırnak kullanıldı)
+Func _SetSystemDNS()
+    ; Aktif adaptörü bul, DNS'i düz Cloudflare yap ve önbelleği sıfırla
     Local $psScript = "$adapter = Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Select-Object -First 1; " & _
-                      "Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses '1.1.1.1'; "
+                      "Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses '1.1.1.1', '1.0.0.1'; " & _
+                      "ipconfig /flushdns;"
 
-    If $bEnableDoH Then
-        ; DoH şablonunu ayarla ve Regedit üzerinden GUID ile DoH'u zorla aktif et
-        $psScript &= "Set-DnsClientDohServerAddress -ServerAddress '1.1.1.1' -DohTemplate 'https://cloudflare-dns.com/dns-query' -AutoUpgrade $true -AllowFallbackToUdp $false; " & _
-                     "$regPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\' + $adapter.InterfaceGuid + '\DohInterfaceSettings\Doh\1.1.1.1'; " & _
-                     "New-Item -Path $regPath -Force | Out-Null; " & _
-                     "New-ItemProperty -Path $regPath -Name 'DohFlags' -Value 1 -PropertyType QWORD -Force | Out-Null; "
-    EndIf
-
-    ; DNS önbelleğini (cache) temizle ki yeni ayarlar hemen devreye girsin
-    $psScript &= "ipconfig /flushdns;"
-
-    ; Komutu arka planda kısıtlamaları (Bypass) aşarak çalıştır
     RunWait('powershell -NoProfile -ExecutionPolicy Bypass -Command "' & $psScript & '"', "", @SW_HIDE)
 EndFunc
 
 Func _ResetSystemDNS()
-    Local $winVer = _GetWindowsVersion() ; İşletim sistemini sorgula
 
     ; Aktif ağ bağdaştırıcısını bul
     Local $psScript = "$adapter = Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Select-Object -First 1; "
-
-    ; Sadece Windows 11 ise senin bulduğun DoH kapatma komutunu ve Reg temizliğini uygula
-    If $winVer == 11 Then
-        ; 1. Resmi yöntemle DoH'u devre dışı bırak
-        $psScript &= "Set-DnsClientDohServerAddress -ServerAddress '1.1.1.1' -DohTemplate 'https://cloudflare-dns.com/dns-query' -AutoUpgrade $false -AllowFallbackToUdp $true; "
-
-        ; 2. Kalıntı kalmaması için Registry anahtarını da uçur
-        $psScript &= "$regPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\' + $adapter.InterfaceGuid + '\DohInterfaceSettings\Doh\1.1.1.1'; " & _
-                     "If (Test-Path $regPath) { Remove-Item -Path $regPath -Recurse -Force }; "
-    EndIf
 
     ; Her iki sistem için: DNS'i otomatiğe (DHCP) al ve DNS önbelleğini sıfırla
     $psScript &= "Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ResetServerAddresses; " & _
@@ -571,21 +538,16 @@ EndFunc
 
 Func CheckDnsPoisoningSilent()
     Local $testDomain = "updates.discord.com"
-    Local $localIP = "", $safeIP = ""
-    Local $sPSCommand = 'powershell -NoProfile -Command "(Resolve-DnsName ' & $testDomain & ' -Type A -ErrorAction SilentlyContinue).IPAddress"'
-    Local $iPidLocal = Run($sPSCommand, "", @SW_HIDE, $STDOUT_CHILD)
+
+    Local $iPidLocal = Run(@ComSpec & ' /c nslookup ' & $testDomain, "", @SW_HIDE, $STDOUT_CHILD)
     ProcessWaitClose($iPidLocal)
-    Local $sLocalOut = StringStripWS(StdoutRead($iPidLocal), 3)
-    If $sLocalOut <> "" Then
-        Local $aIPs = StringSplit($sLocalOut, @CRLF, 1)
-        $localIP = $aIPs[1]
+    Local $sLocalOut = StdoutRead($iPidLocal)
+
+    If StringInStr($sLocalOut, "162.159") Then
+        Return False ; Pass
+    Else
+        Return True  ; Fail
     EndIf
-    $safeIP = "162.159.137.232"
-    If $localIP = "" Then Return True
-    If $safeIP = "" Then Return True
-    Local $localPrefix = StringRegExpReplace($localIP, "^(\d+\.\d+).*", "$1")
-    Local $safePrefix = StringRegExpReplace($safeIP, "^(\d+\.\d+).*", "$1")
-    Return ($localPrefix <> $safePrefix)
 EndFunc
 
 Func CheckServiceStatus($manualBtn, $statusID, $lockArray, $chkID)
