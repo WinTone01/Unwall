@@ -21,6 +21,13 @@ ENGINE_DIR="$ZT_OPT/engines"
 UNIT="zapret-turkey.service"
 
 NFT_TABLE="zapret_turkey"
+
+# Arayüz dili: ZT_LANG=tr|en, yoksa yerel ayardan. Türkçe dışındaki her
+# şey İngilizce sayılır.
+case "${ZT_LANG:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}" in
+tr*|TR*) ZT_UI_LANG=tr ;;
+*)       ZT_UI_LANG=en ;;
+esac
 DESYNC_MARK="0x40000000"
 
 # --- Varsayılanlar (config eksikse) ---
@@ -35,12 +42,69 @@ GATEWAY_MODE="0"
 WAN_IFACE=""
 ENABLE_IPV6="0"
 
-die() { printf 'hata: %s\n' "$*" >&2; exit 1; }
+# Kaynak metinler İngilizce; Türkçe karşılıkları t() içinde.
+t() {
+	[ "$ZT_UI_LANG" = tr ] || { printf '%s' "$1"; return 0; }
+	case "$1" in
+	"error")                       printf 'hata' ;;
+	"warning")                     printf 'uyarı' ;;
+	"this command requires root (run it with pkexec/sudo)")
+		printf 'bu komut root gerektirir (pkexec/sudo ile çalıştırın)' ;;
+	"engine not found")            printf 'motor bulunamadı' ;;
+	"strategy not found")          printf 'strateji bulunamadı' ;;
+	"the strategy is empty. if 'analiz' is selected, run blockcheck first.")
+		printf "strateji boş. 'analiz' seçiliyse önce blockcheck çalıştırın." ;;
+	"could not apply the nftables rules")
+		printf 'nftables kuralları uygulanamadı' ;;
+	"strategy file is missing")    printf 'strateji dosyası yok' ;;
+	"a conflicting process is running")
+		printf 'çakışan süreç çalışıyor' ;;
+	"upstream zapret.service is active; the NFQUEUE rules may collide")
+		printf 'upstream zapret.service aktif; NFQUEUE kuralları çakışabilir' ;;
+	"stopping upstream zapret.service")
+		printf 'upstream zapret.service durduruluyor' ;;
+	"killing process")             printf 'süreç sonlandırılıyor' ;;
+	"nothing conflicting was found")
+		printf 'çakışan bir şey bulunamadı' ;;
+	"fetching the source of")      printf 'kaynak kodu alınıyor:' ;;
+	"building")                    printf 'derleniyor:' ;;
+	"ready")                       printf 'hazır:' ;;
+	"missing development libraries")
+		printf 'eksik geliştirme kütüphaneleri' ;;
+	"run 'zapret-turkeyctl build' again after installing them")
+		printf "kurulumdan sonra 'zapret-turkeyctl build' komutunu tekrar çalıştırın" ;;
+	"blockcheck not found, run first: zapret-turkeyctl build")
+		printf 'blockcheck bulunamadı, önce: zapret-turkeyctl build' ;;
+	"stopping the engine for the duration of the test")
+		printf 'motor geçici olarak durduruluyor' ;;
+	"blockcheck starting")         printf 'blockcheck başlıyor' ;;
+	"strategy found")              printf 'bulunan strateji' ;;
+	"configuration updated (STRATEGY=analiz)")
+		printf 'config güncellendi (STRATEGY=analiz)' ;;
+	"could not extract a working strategy from the log, see")
+		printf 'logdan çalışan bir strateji çıkarılamadı, bkz.' ;;
+	"encrypted DNS is on")         printf 'şifreli DNS açık' ;;
+	"encrypted DNS turned off, back to system defaults")
+		printf 'şifreli DNS kapatıldı, sistem varsayılanlarına dönüldü' ;;
+	"backing up the existing dnscrypt-proxy configuration")
+		printf 'mevcut dnscrypt-proxy yapılandırması yedekleniyor' ;;
+	"restoring the previous dnscrypt-proxy configuration")
+		printf 'önceki dnscrypt-proxy yapılandırması geri yükleniyor' ;;
+	"853/tcp (DoT) looks closed; your ISP may be blocking it")
+		printf '853/tcp (DoT) kapalı görünüyor; ISS engelliyor olabilir' ;;
+	"enabling systemd-resolved")   printf 'systemd-resolved etkinleştiriliyor' ;;
+	"dnscrypt-proxy is not installed")
+		printf 'dnscrypt-proxy kurulu değil' ;;
+	*) printf '%s' "$1" ;;
+	esac
+}
+
+die() { printf '%s: %s\n' "$(t 'error')" "$*" >&2; exit 1; }
 info() { printf '==> %s\n' "$*"; }
-warn() { printf 'uyarı: %s\n' "$*" >&2; }
+warn() { printf '%s: %s\n' "$(t 'warning')" "$*" >&2; }
 
 need_root() {
-	[ "$(id -u)" -eq 0 ] || die "bu komut root gerektirir (pkexec/sudo ile çalıştırın)"
+	[ "$(id -u)" -eq 0 ] || die "$(t 'this command requires root (run it with pkexec/sudo)')"
 }
 
 load_config() {
@@ -97,12 +161,17 @@ cmd_config() {
 cmd_strategies() {
 	local want="${1:-}"
 	[ -n "$want" ] || { load_config; want="$ENGINE"; }
-	[ -r "$STRATEGY_FILE" ] || die "strateji dosyası yok: $STRATEGY_FILE"
-	printf 'analiz\tAnaliz Sonucu (blockcheck)\t\n'
-	local eng id label args
-	while IFS='|' read -r eng id label args; do
+	[ -r "$STRATEGY_FILE" ] || die "$(t 'strategy file is missing'): $STRATEGY_FILE"
+	if [ "$ZT_UI_LANG" = tr ]; then
+		printf 'analiz\tAnaliz Sonucu (blockcheck)\t\n'
+	else
+		printf 'analiz\tBlockcheck result\t\n'
+	fi
+	local eng id label args label_en
+	while IFS='|' read -r eng id label args label_en; do
 		case "$eng" in ''|\#*) continue ;; esac
 		[ "$eng" = "$want" ] || continue
+		[ "$ZT_UI_LANG" = tr ] || [ -z "$label_en" ] || label="$label_en"
 		printf '%s\t%s\t%s\n' "$id" "$label" "$args"
 	done < "$STRATEGY_FILE"
 }
@@ -113,8 +182,8 @@ strategy_args() {
 		printf '%s' "$CUSTOM_ARGS"
 		return 0
 	fi
-	local eng id label args
-	while IFS='|' read -r eng id label args; do
+	local eng id label args label_en
+	while IFS='|' read -r eng id label args label_en; do
 		case "$eng" in ''|\#*) continue ;; esac
 		if [ "$eng" = "$ENGINE" ] && [ "$id" = "$STRATEGY" ]; then
 			printf '%s' "$args"
@@ -211,7 +280,7 @@ cmd_nft_apply() {
 	modprobe nfnetlink_queue 2>/dev/null || true
 	modprobe nft_queue 2>/dev/null || true
 	cmd_nft_flush
-	nft_ruleset | nft -f - || die "nftables kuralları uygulanamadı"
+	nft_ruleset | nft -f - || die "$(t 'could not apply the nftables rules')"
 	if [ "$GATEWAY_MODE" = "1" ]; then
 		sysctl -qw net.ipv4.ip_forward=1
 		# Aynı arayüzden yönlendirmede ICMP redirect istemciyi yönlendiriciyi
@@ -237,11 +306,11 @@ cmd_nft_flush() {
 build_engine_cmd() {
 	# Motor komutunu ENGINE_CMD dizisine kurar.
 	local bin; bin="$(engine_bin)"
-	[ -x "$bin" ] || die "motor bulunamadı: $bin  (önce: zapret-turkeyctl build)"
+	[ -x "$bin" ] || die "$(t 'engine not found'): $bin"
 
 	local sargs
-	sargs="$(strategy_args)" || die "strateji bulunamadı: $ENGINE/$STRATEGY"
-	[ -n "$sargs" ] || die "strateji boş. 'analiz' seçiliyse önce blockcheck çalıştırın."
+	sargs="$(strategy_args)" || die "$(t 'strategy not found'): $ENGINE/$STRATEGY"
+	[ -n "$sargs" ] || die "$(t 'the strategy is empty. if '"'"'analiz'"'"' is selected, run blockcheck first.')"
 
 	local args=()
 
@@ -362,10 +431,10 @@ conflict_guard() {
 	# Aynı anda çalışan başka bir DPI atlatma aracı kuyruğu bozar
 	local p
 	for p in $(foreign_dpi_pids); do
-		warn "çakışan süreç çalışıyor: PID $p ($(cat "/proc/$p/comm" 2>/dev/null))"
+		warn "$(t 'a conflicting process is running'): PID $p ($(cat "/proc/$p/comm" 2>/dev/null))"
 	done
 	if systemctl is-active --quiet zapret.service 2>/dev/null; then
-		warn "upstream zapret.service aktif; NFQUEUE kuralları çakışabilir"
+		warn "$(t 'upstream zapret.service is active; the NFQUEUE rules may collide')"
 	fi
 }
 
@@ -375,17 +444,17 @@ cmd_disable_conflicts() {
 	local done_any=0
 	if systemctl is-enabled --quiet zapret.service 2>/dev/null ||
 	   systemctl is-active --quiet zapret.service 2>/dev/null; then
-		info "upstream zapret.service durduruluyor"
+		info "$(t 'stopping upstream zapret.service')"
 		systemctl disable --now zapret.service || true
 		done_any=1
 	fi
 	local p
 	for p in $(foreign_dpi_pids); do
-		info "süreç sonlandırılıyor: $(cat "/proc/$p/comm" 2>/dev/null) ($p)"
+		info "$(t 'killing process'): $(cat "/proc/$p/comm" 2>/dev/null) ($p)"
 		kill "$p" 2>/dev/null || true
 		done_any=1
 	done
-	[ "$done_any" = 1 ] || info "çakışan bir şey bulunamadı"
+	[ "$done_any" = 1 ] || info "$(t 'nothing conflicting was found')"
 	return 0
 }
 
@@ -523,14 +592,14 @@ dns_enable() {
 	[ "$backend" = "auto" ] && backend="$(dns_backend_auto)"
 
 	systemctl is-active --quiet systemd-resolved 2>/dev/null || {
-		info "systemd-resolved etkinleştiriliyor"
+		info "$(t 'enabling systemd-resolved')"
 		systemctl enable --now systemd-resolved
 	}
 
 	case "$backend" in
 	resolved)
 		if ! dns_port_reachable 1.1.1.1 853; then
-			warn "853/tcp (DoT) kapalı görünüyor; ISS engelliyor olabilir."
+			warn "$(t '853/tcp (DoT) looks closed; your ISP may be blocking it')"
 			warn "dnscrypt-proxy kurup 'dns enable $provider dnscrypt' ile DoH deneyin."
 		fi
 		mkdir -p "$(dirname "$RESOLVED_DROPIN")"
@@ -548,7 +617,7 @@ dns_enable() {
 		} > "$RESOLVED_DROPIN"
 		;;
 	dnscrypt)
-		command -v dnscrypt-proxy >/dev/null 2>&1 || die "dnscrypt-proxy kurulu değil (pacman -S dnscrypt-proxy)"
+		command -v dnscrypt-proxy >/dev/null 2>&1 || die "$(t 'dnscrypt-proxy is not installed') (pacman -S dnscrypt-proxy)"
 		dnscrypt_write_config "$provider"
 		systemctl enable --now dnscrypt-proxy
 		mkdir -p "$(dirname "$RESOLVED_DROPIN")"
@@ -569,7 +638,7 @@ dns_enable() {
 	chmod 0644 "$RESOLVED_DROPIN"
 	systemctl restart systemd-resolved
 	resolvectl flush-caches 2>/dev/null || true
-	info "şifreli DNS açık (arka uç: $backend, sağlayıcı: $provider)"
+	info "$(t 'encrypted DNS is on') ($backend, $provider)"
 	dns_test
 }
 
@@ -578,7 +647,7 @@ dnscrypt_write_config() {
 	local server; server="$(dns_provider_doh "$provider")"
 
 	if [ -f "$DNSCRYPT_CONF" ] && ! grep -q 'zapret-turkey' "$DNSCRYPT_CONF"; then
-		info "mevcut dnscrypt-proxy yapılandırması yedekleniyor: $DNSCRYPT_BAK"
+		info "$(t 'backing up the existing dnscrypt-proxy configuration'): $DNSCRYPT_BAK"
 		cp -n "$DNSCRYPT_CONF" "$DNSCRYPT_BAK"
 	fi
 
@@ -630,10 +699,10 @@ dns_disable() {
 		systemctl disable --now dnscrypt-proxy
 	fi
 	if [ -f "$DNSCRYPT_BAK" ]; then
-		info "önceki dnscrypt-proxy yapılandırması geri yükleniyor"
+		info "$(t 'restoring the previous dnscrypt-proxy configuration')"
 		mv -f "$DNSCRYPT_BAK" "$DNSCRYPT_CONF"
 	fi
-	info "şifreli DNS kapatıldı, sistem varsayılanlarına dönüldü"
+	info "$(t 'encrypted DNS turned off, back to system defaults')"
 }
 
 dns_test() {
@@ -781,7 +850,7 @@ build_prereq_check() {
 
 	[ -z "$missing" ] && return 0
 
-	warn "eksik geliştirme kütüphaneleri:$missing"
+	warn "$(t 'missing development libraries'):$missing"
 	echo
 	if command -v pacman >/dev/null 2>&1; then
 		echo "    sudo pacman -S --needed$missing"
@@ -803,7 +872,7 @@ build_prereq_check() {
 		echo "    sudo dnf install$rpm"
 	fi
 	echo
-	die "kurulumdan sonra 'zapret-turkeyctl build' komutunu tekrar çalıştırın"
+	die "$(t "run 'zapret-turkeyctl build' again after installing them")"
 }
 
 cmd_build() {
@@ -819,7 +888,7 @@ cmd_build() {
 
 	build_one() {
 		local name="$1" repo="$2" nfqdir="$3" binname="$4"
-		info "$name kaynak kodu alınıyor"
+		info "$(t 'fetching the source of') $name"
 		if [ -d "$SRC_DIR/$name/.git" ]; then
 			git -C "$SRC_DIR/$name" fetch --depth 1 origin master
 			git -C "$SRC_DIR/$name" reset --hard origin/master
@@ -827,7 +896,7 @@ cmd_build() {
 			rm -rf "${SRC_DIR:?}/$name"
 			git clone --depth 1 "$repo" "$SRC_DIR/$name"
 		fi
-		info "$name derleniyor"
+		info "$(t 'building') $name"
 		make -C "$SRC_DIR/$name/$nfqdir" >/dev/null
 		make -C "$SRC_DIR/$name/mdig" >/dev/null || warn "mdig derlenemedi (blockcheck için gerekli)"
 		mkdir -p "$ENGINE_DIR/$name"
@@ -836,7 +905,7 @@ cmd_build() {
 			rm -rf "$ENGINE_DIR/$name/lua"
 			cp -r "$SRC_DIR/$name/lua" "$ENGINE_DIR/$name/lua"
 		fi
-		info "$name hazır: $ENGINE_DIR/$name/$binname"
+		info "$(t 'ready') $name: $ENGINE_DIR/$name/$binname"
 		return 0
 	}
 
@@ -875,13 +944,13 @@ cmd_blockcheck() {
 		done ;;
 	*) die "geçersiz motor: $eng" ;;
 	esac
-	[ -f "$base/$script" ] || die "blockcheck bulunamadı, önce: zapret-turkeyctl build $eng"
+	[ -f "$base/$script" ] || die "$(t 'blockcheck not found, run first: zapret-turkeyctl build') $eng"
 
 	# Çalışan motor blockcheck sonucunu bozar
-	systemctl is-active --quiet "$UNIT" && { info "motor geçici olarak durduruluyor"; systemctl stop "$UNIT"; cmd_nft_flush; }
+	systemctl is-active --quiet "$UNIT" && { info "$(t 'stopping the engine for the duration of the test')"; systemctl stop "$UNIT"; cmd_nft_flush; }
 
 	local domains="${DOMAINS:-discord.com roblox.com}"
-	info "blockcheck başlıyor ($eng): $domains  --  log: $log"
+	info "$(t 'blockcheck starting') ($eng): $domains  --  log: $log"
 
 	env BATCH=1 \
 		ZAPRET_BASE="$base" \
@@ -899,11 +968,11 @@ cmd_blockcheck() {
 	local found
 	found="$(parse_blockcheck "$log" "$eng" || true)"
 	if [ -n "$found" ]; then
-		info "bulunan strateji: $found"
+		info "$(t 'strategy found'): $found"
 		cmd_config set "CUSTOM_ARGS=$found" "STRATEGY=analiz" "ENGINE=$eng"
-		info "config güncellendi (STRATEGY=analiz)"
+		info "$(t 'configuration updated (STRATEGY=analiz)')"
 	else
-		warn "logdan çalışan bir strateji çıkarılamadı, $log dosyasına bakın"
+		warn "$(t 'could not extract a working strategy from the log, see') $log"
 	fi
 }
 
@@ -974,6 +1043,12 @@ EOF
 }
 
 main() {
+	# --lang=tr|en her komuttan önce verilebilir (arayüz bunu kullanır)
+	case "${1:-}" in
+	--lang=*) ZT_UI_LANG="${1#--lang=}"; shift ;;
+	esac
+	[ "$ZT_UI_LANG" = tr ] || ZT_UI_LANG=en
+
 	local cmd="${1:-}"; shift || true
 	case "$cmd" in
 	status)       cmd_status "$@" ;;

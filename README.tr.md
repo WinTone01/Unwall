@@ -7,8 +7,8 @@ atlatmaya yarayan [zapret](https://github.com/bol-van/zapret) ve
 [zapret2](https://github.com/bol-van/zapret2) motorlarının Linux kontrol paneli.
 
 <p align="center">
-  <img src="docs/screenshots/arayuz-ust.png" alt="Zapret Türkiye arayüzü - durum, motor, strateji ve şifreli DNS" width="46%">
-  <img src="docs/screenshots/arayuz-alt.png" alt="Zapret Türkiye arayüzü - şifreli DNS, ağ geçidi modu ve servis" width="46%">
+  <img src="docs/screenshots/gui-tr-top.png" alt="Zapret Türkiye arayüzü - durum, motor, strateji ve şifreli DNS" width="46%">
+  <img src="docs/screenshots/gui-tr-bottom.png" alt="Zapret Türkiye arayüzü - şifreli DNS, ağ geçidi modu ve servis" width="46%">
 </p>
 
 Bu proje, [zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey)
@@ -37,6 +37,8 @@ systemd servisi, şifreli DNS ve GTK4 arayüzü ekler.
   (`systemd-resolved`, 853) kurulumu — Windows sürümündeki YogaDNS önerisinin
   yerine geçer, geri alınabilir.
 - **Teşhis**: DNS müdahalesi kontrolü, çakışan araç/kuyruk tespiti.
+- **Türkçe ve İngilizce**: arayüz dili yerel ayardan seçilir, menüden
+  (Dil) değiştirilebilir; `ZT_LANG=tr` / `ZT_LANG=en` ile de zorlanabilir.
 - **Yetki ayrımı**: arayüz normal kullanıcı olarak çalışır, ayrıcalıklı işler
   polkit üzerinden tek bir yardımcı betiğe gider.
 

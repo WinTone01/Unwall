@@ -7,8 +7,8 @@ A Linux control panel for the [zapret](https://github.com/bol-van/zapret) and
 Turkey who need to get around DPI-based (Deep Packet Inspection) censorship.
 
 <p align="center">
-  <img src="docs/screenshots/arayuz-ust.png" alt="Zapret Turkey GUI - status, engine, strategy and encrypted DNS" width="46%">
-  <img src="docs/screenshots/arayuz-alt.png" alt="Zapret Turkey GUI - encrypted DNS, gateway mode and service" width="46%">
+  <img src="docs/screenshots/gui-en-top.png" alt="Zapret Turkey GUI - status, engine, strategy and encrypted DNS" width="46%">
+  <img src="docs/screenshots/gui-en-bottom.png" alt="Zapret Turkey GUI - encrypted DNS, gateway mode and service" width="46%">
 </p>
 
 This is the Linux counterpart of the Windows application
@@ -41,6 +41,8 @@ management, a systemd service, encrypted DNS and a GTK4 interface.
   (`systemd-resolved`, port 853). This replaces the YogaDNS recommendation from
   the Windows version, and it is fully reversible.
 - **Diagnostics**: DNS interference check, conflicting tool and queue detection.
+- **English and Turkish**: the interface picks your locale automatically and can
+  be switched from the menu (Language); `ZT_LANG=en` / `ZT_LANG=tr` override it.
 - **Privilege separation**: the GUI runs as your normal user; privileged work
   goes through a single helper script via polkit.
 

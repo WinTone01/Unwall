@@ -22,6 +22,135 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 APP_ID = "org.zapret.turkey"
 VERSION = "1.0.0"
 
+CONFIG_DIR = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+    "zapret-turkey",
+)
+CONFIG_FILE = os.path.join(CONFIG_DIR, "gui.conf")
+
+
+def _detect_lang():
+    """Dil sırası: ZT_LANG > kayıtlı seçim > yerel ayar > İngilizce."""
+    env = os.environ.get("ZT_LANG", "").lower()
+    if env.startswith(("tr", "en")):
+        return env[:2]
+    try:
+        with open(CONFIG_FILE) as fh:
+            for line in fh:
+                if line.startswith("lang="):
+                    v = line.split("=", 1)[1].strip().lower()
+                    if v in ("tr", "en"):
+                        return v
+    except OSError:
+        pass
+    loc = (
+        os.environ.get("LC_ALL")
+        or os.environ.get("LC_MESSAGES")
+        or os.environ.get("LANG")
+        or ""
+    ).lower()
+    return "tr" if loc.startswith("tr") else "en"
+
+
+LANG = _detect_lang()
+
+
+def save_lang(lang):
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(CONFIG_FILE, "w") as fh:
+        fh.write(f"lang={lang}\n")
+
+
+# Kaynak dizeler İngilizce; Türkçe karşılıkları burada.
+TR = {
+    'Only the domains in the list go through the engine; the rest of your traffic is untouched.': 'Yalnızca listedeki alan adları motordan geçer; normal trafiğiniz etkilenmez.',
+    'If your ISP tampers with DNS, zapret alone is not enough. Queries are carried over an encrypted channel.': "ISS'niz DNS'e müdahale ediyorsa zapret tek başına yetmez. Sorgular şifreli kanaldan taşınır.",
+    'Blockcheck tries dozens of strategies; it can take several minutes and the engine is stopped while it runs. The result is written to the blockcheck strategy automatically.': "Blockcheck onlarca strateji dener; birkaç dakika sürebilir ve bu sırada motor geçici olarak durdurulur. Sonuç otomatik olarak 'Analiz Sonucu' stratejisine yazılır.",
+    'Language': 'Dil',
+    'diagnostics': 'ortam teşhisi',
+    '(could not read the strategy list)': '(strateji listesi okunamadı)',
+    'A conflicting DPI tool is running': 'Çakışan bir DPI aracı çalışıyor',
+    'ACTIVE': 'AKTİF',
+    'APPLY SETTINGS': 'AYARLARI UYGULA',
+    'About': 'Hakkında',
+    'Analyze': 'Analiz Et',
+    'Another operation is in progress': 'Başka bir işlem sürüyor',
+    'Authorisation was not given': 'Yetki verilmedi',
+    'Blockcheck result: {}': 'Analiz sonucu: {}',
+    'Build / update engines': 'Motorları derle / güncelle',
+    'CHECKING…': 'KONTROL EDİLİYOR…',
+    'Cancel': 'Vazgeç',
+    'Checks the encrypted channel and interference': 'Şifreli kanal ve müdahale kontrolü',
+    'Conflicting DPI tool running: {}': 'Çakışan DPI aracı çalışıyor: {}',
+    'DNS check': 'DNS kontrolü',
+    'DNS is being tampered with - use DoH/DoT': 'DNS müdahalesi var — DoH/DoT kullanın',
+    'DNS is encrypted and clean': 'DNS şifreli ve temiz',
+    'DNS looks clean': 'DNS temiz görünüyor',
+    'DNS result: {}': 'DNS sonucu: {}',
+    'DNS test': 'DNS sınaması',
+    'Diagnostics': 'Ortam teşhisi',
+    'Diagnostics finished': 'Teşhis tamamlandı',
+    'ENGINE NOT BUILT': 'MOTOR DERLENMEMİŞ',
+    'Edit lists': 'Listeleri düzenle',
+    'Enables the systemd unit': 'systemd birimi olarak etkinleştirir',
+    'Encrypted DNS': 'Şifreli DNS',
+    'Encrypted DNS is off': 'Şifreli DNS kapalı',
+    'Encrypted, but interference result: {}': 'Şifreli, ama müdahale sonucu: {}',
+    'Engine': 'Motor',
+    'Engine and strategy': 'Motor ve Strateji',
+    'Filtering': 'Filtreleme',
+    'For DoH: install the dnscrypt-proxy package': 'DoH için: dnscrypt-proxy paketini kurun',
+    'Gateway mode': 'Ağ geçidi modu',
+    'Hostlist mode': 'Hostlist modu',
+    'How do I configure the device?': 'Cihaz ayarları nasıl yapılır?',
+    'INSTALLATION INCOMPLETE': 'KURULUM EKSİK',
+    'ISP analysis (blockcheck)': 'ISS Analizi (blockcheck)',
+    'LAN address': 'LAN adresi',
+    'Looks for a strategy that works on your ISP (can take a while)': 'Operatörünüz için çalışan stratejiyi arar (uzun sürebilir)',
+    'Method': 'Yöntem',
+    'Open folder': 'Klasörü Aç',
+    'Output': 'Çıktı',
+    'Problems found, see the output': 'Sorun bulundu, çıktıya bakın',
+    'Provider': 'Sağlayıcı',
+    'READY': 'HAZIR',
+    'Refresh': 'Yenile',
+    'Route console, TV and similar devices through this machine': 'Konsol, TV vb. cihazları bu makine üzerinden geçir',
+    'SERVICE MODE ACTIVE': 'SERVİS MODU AKTİF',
+    'START ZAPRET': "ZAPRET'İ BAŞLAT",
+    'STOP': 'DURDUR',
+    'Service': 'Servis',
+    'Share with devices on your network': 'Ağdaki Cihazlarla Paylaş',
+    'Shut down': 'Kapat',
+    'Start': 'Başlat',
+    'Start at boot': 'Açılışta otomatik başlat',
+    'Start the ISP analysis?': 'ISS analizi başlatılsın mı?',
+    'Strategy': 'Strateji',
+    'Test': 'Sına',
+    'The operation failed (see the output)': 'İşlem hata ile bitti (çıktıya bakın)',
+    'Zapret Turkey': 'Zapret Türkiye',
+    'build engines': 'motorları derle',
+    'disable encrypted DNS': 'şifreli DNS kapat',
+    'enable encrypted DNS': 'şifreli DNS aç',
+    'gateway mode': 'ağ geçidi',
+    'install service': 'servis kur',
+    'none yet (run blockcheck)': 'yok (önce blockcheck)',
+    'not applied → {}   (currently: {})': 'uygulanmadı → {}   (şu an: {})',
+    'off · currently: {}': 'kapalı · şu an: {}',
+    'remove service': 'servisi kaldır',
+    'restart': 'yeniden başlat',
+    'shut down conflicting tools': 'çakışanları kapat',
+    'start': 'başlat',
+    'stop': 'durdur',
+    '{} is configured but not active': '{} yapılandırıldı ama etkin değil',
+    '{} not found. Run install.sh.': '{} bulunamadı. install.sh çalıştırın.',
+}
+
+
+def T(text):
+    """Kaynak dizeyi geçerli dile çevirir. Ad '_' olamaz: kod içinde '_'
+    kullanılmayan değişken olarak da geçiyor ve fonksiyonu gölgeliyordu."""
+    return TR.get(text, text) if LANG == "tr" else text
+
 # Terminalden çalıştırıldığında her şey konsola aksın. Ayrıntı için:
 #   ZT_DEBUG=1 zapret-turkey
 logging.basicConfig(
@@ -35,7 +164,7 @@ log = logging.getLogger("zapret-turkey")
 
 def _excepthook(exc_type, exc, tb):
     """Yakalanmamış hatalar sessizce yutulmasın."""
-    log.error("YAKALANMAMIŞ HATA:\n%s", "".join(traceback.format_exception(exc_type, exc, tb)))
+    log.error("UNCAUGHT ERROR:\n%s", "".join(traceback.format_exception(exc_type, exc, tb)))
 
 
 sys.excepthook = _excepthook
@@ -43,14 +172,14 @@ sys.excepthook = _excepthook
 CTL = os.environ.get("ZT_CTL", shutil.which("zapret-turkeyctl") or "/usr/local/bin/zapret-turkeyctl")
 
 HOSTLIST_MODES = [
-    ("auto", "Otomatik (zapret öğrenir)"),
-    ("manual", "Manuel (hostlist.txt)"),
-    ("off", "Kapalı (tüm trafik)"),
+    ("auto", T("Automatic (zapret learns)")),
+    ("manual", T("Manual (hostlist.txt)")),
+    ("off", T("Off (all traffic)")),
 ]
 
 ENGINES = [
-    ("zapret2", "Zapret2 (yeni LUA motoru)"),
-    ("zapret", "Zapret (klasik motor)"),
+    ("zapret2", T("Zapret2 (new LUA engine)")),
+    ("zapret", T("Zapret (classic engine)")),
 ]
 
 DNS_PROVIDERS = [
@@ -60,12 +189,23 @@ DNS_PROVIDERS = [
 ]
 
 DNS_BACKENDS = [
-    ("auto", "Otomatik"),
-    ("dnscrypt", "DoH — dnscrypt-proxy (443, fark edilmez)"),
-    ("resolved", "DoT — systemd-resolved (853)"),
+    ("auto", T("Automatic")),
+    ("dnscrypt", T("DoH - dnscrypt-proxy (443, blends in)")),
+    ("resolved", T("DoT - systemd-resolved (853)")),
 ]
 
-GATEWAY_HELP = (
+GATEWAY_HELP_EN = (
+    "This machine becomes a NAT router for your local network, so console and "
+    "TV traffic goes through zapret as well.\n\n"
+    "Enter these manually in the device's network settings:\n"
+    "  • Gateway: this computer's LAN IP address\n"
+    "  • Subnet mask: same as your network (usually 255.255.255.0)\n"
+    "  • DNS: 1.1.1.1 / 8.8.8.8\n\n"
+    "The go-pcap2socks + Npcap layer used on Windows is not needed; routing "
+    "and NAT are done by the kernel."
+)
+
+GATEWAY_HELP_TR = (
     "Bu makine yerel ağdaki cihazlar için NAT yapan bir yönlendiriciye dönüşür; "
     "konsol/TV trafiği de zapret'ten geçer.\n\n"
     "Cihazın ağ ayarlarına elle şunları girin:\n"
@@ -76,12 +216,16 @@ GATEWAY_HELP = (
     "yönlendirme ve NAT çekirdek tarafından yapılır."
 )
 
+GATEWAY_HELP = GATEWAY_HELP_TR if LANG == "tr" else GATEWAY_HELP_EN
+
 
 def ctl(*args, timeout=15):
     """Yetki gerektirmeyen ctl çağrısı. (çıkış kodu, çıktı) döner."""
     try:
+        env = dict(os.environ, ZT_LANG=LANG)
         p = subprocess.run(
-            [CTL, *args], capture_output=True, text=True, timeout=timeout
+            [CTL, f"--lang={LANG}", *args],
+            capture_output=True, text=True, timeout=timeout, env=env,
         )
         out = (p.stdout or "") + (p.stderr or "")
         if p.returncode == 0:
@@ -90,7 +234,7 @@ def ctl(*args, timeout=15):
             log.warning("ctl %s -> %s\n%s", " ".join(args), p.returncode, out.strip())
         return p.returncode, out
     except (OSError, subprocess.TimeoutExpired) as exc:
-        log.error("ctl %s çalıştırılamadı: %s", " ".join(args), exc)
+        log.error("could not run ctl %s: %s", " ".join(args), exc)
         return 1, str(exc)
 
 
@@ -105,7 +249,7 @@ def parse_kv(text):
 
 class Window(Adw.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title="Zapret Türkiye")
+        super().__init__(application=app, title=T("Zapret Turkey"))
         self.set_default_size(520, 760)
         self.status = {}
         self.config = {}
@@ -126,14 +270,19 @@ class Window(Adw.ApplicationWindow):
         toolbar.add_top_bar(header)
 
         menu = Gio.Menu()
-        menu.append("Ortam teşhisi", "win.doctor")
-        menu.append("DNS kontrolü", "win.dnscheck")
-        menu.append("Motorları derle / güncelle", "win.build")
-        menu.append("Hakkında", "win.about")
+        menu.append(T("Diagnostics"), "win.doctor")
+        menu.append(T("DNS check"), "win.dnscheck")
+        menu.append(T("Build / update engines"), "win.build")
+        menu.append(T("About"), "win.about")
+
+        lang_menu = Gio.Menu()
+        lang_menu.append("English", "win.lang-en")
+        lang_menu.append("Türkçe", "win.lang-tr")
+        menu.append_submenu(T("Language"), lang_menu)
         btn_menu = Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu)
         header.pack_end(btn_menu)
 
-        btn_refresh = Gtk.Button(icon_name="view-refresh-symbolic", tooltip_text="Yenile")
+        btn_refresh = Gtk.Button(icon_name="view-refresh-symbolic", tooltip_text=T("Refresh"))
         btn_refresh.connect("clicked", lambda *_: self.refresh())
         header.pack_start(btn_refresh)
 
@@ -142,6 +291,8 @@ class Window(Adw.ApplicationWindow):
             ("dnscheck", self.on_dnscheck),
             ("build", self.on_build),
             ("about", self.on_about),
+            ("lang-en", lambda *_a: self.set_language("en")),
+            ("lang-tr", lambda *_a: self.set_language("tr")),
         ):
             act = Gio.SimpleAction.new(name, None)
             act.connect("activate", cb)
@@ -149,14 +300,14 @@ class Window(Adw.ApplicationWindow):
 
         # Çakışan başka bir DPI aracı varsa üstte uyarı çubuğu
         self.banner = Adw.Banner(
-            title="Çakışan bir DPI aracı çalışıyor",
-            button_label="Kapat",
+            title=T("A conflicting DPI tool is running"),
+            button_label=T("Shut down"),
             revealed=False,
         )
         self.banner.connect(
             "button-clicked",
             lambda *_: self.run_privileged(
-                ["disable-conflicts"], title="çakışanları kapat"
+                ["disable-conflicts"], title=T("shut down conflicting tools")
             ),
         )
         toolbar.add_top_bar(self.banner)
@@ -168,7 +319,7 @@ class Window(Adw.ApplicationWindow):
         g_status = Adw.PreferencesGroup()
         page.add(g_status)
 
-        self.lbl_state = Gtk.Label(label="KONTROL EDİLİYOR…")
+        self.lbl_state = Gtk.Label(label=T("CHECKING…"))
         self.lbl_state.add_css_class("title-1")
         self.lbl_sub = Gtk.Label(label="")
         self.lbl_sub.add_css_class("dim-label")
@@ -180,7 +331,7 @@ class Window(Adw.ApplicationWindow):
         box.append(self.lbl_state)
         box.append(self.lbl_sub)
 
-        self.btn_main = Gtk.Button(label="ZAPRET'İ BAŞLAT")
+        self.btn_main = Gtk.Button(label=T("START ZAPRET"))
         self.btn_main.add_css_class("suggested-action")
         self.btn_main.add_css_class("pill")
         self.btn_main.set_size_request(-1, 48)
@@ -194,23 +345,23 @@ class Window(Adw.ApplicationWindow):
         g_status.add(box)
 
         # --- Motor / strateji ---
-        g_engine = Adw.PreferencesGroup(title="Motor ve Strateji")
+        g_engine = Adw.PreferencesGroup(title=T("Engine and strategy"))
         page.add(g_engine)
 
-        self.row_engine = Adw.ComboRow(title="Motor")
+        self.row_engine = Adw.ComboRow(title=T("Engine"))
         self.row_engine.set_model(Gtk.StringList.new([label for _, label in ENGINES]))
         self.row_engine.connect("notify::selected", self.on_engine_changed)
         g_engine.add(self.row_engine)
 
-        self.row_strategy = Adw.ComboRow(title="Strateji")
+        self.row_strategy = Adw.ComboRow(title=T("Strategy"))
         self.row_strategy.connect("notify::selected", lambda *_: self.mark_dirty())
         g_engine.add(self.row_strategy)
 
         self.row_blockcheck = Adw.ActionRow(
-            title="ISS Analizi (blockcheck)",
-            subtitle="Operatörünüz için çalışan stratejiyi arar (uzun sürebilir)",
+            title=T("ISP analysis (blockcheck)"),
+            subtitle=T("Looks for a strategy that works on your ISP (can take a while)"),
         )
-        btn_bc = Gtk.Button(label="Analiz Et", valign=Gtk.Align.CENTER)
+        btn_bc = Gtk.Button(label=T("Analyze"), valign=Gtk.Align.CENTER)
         btn_bc.connect("clicked", self.on_blockcheck)
         self.row_blockcheck.add_suffix(btn_bc)
         self.row_blockcheck.set_activatable_widget(btn_bc)
@@ -218,71 +369,75 @@ class Window(Adw.ApplicationWindow):
 
         # --- Filtreleme ---
         g_filter = Adw.PreferencesGroup(
-            title="Filtreleme",
-            description="Yalnızca listedeki alan adları motordan geçer; "
-            "normal trafiğiniz etkilenmez.",
+            title=T("Filtering"),
+            description=T(
+                "Only the domains in the list go through the engine; the rest "
+                "of your traffic is untouched."
+            ),
         )
         page.add(g_filter)
 
-        self.row_hostlist = Adw.ComboRow(title="Hostlist modu")
+        self.row_hostlist = Adw.ComboRow(title=T("Hostlist mode"))
         self.row_hostlist.set_model(Gtk.StringList.new([l for _, l in HOSTLIST_MODES]))
         self.row_hostlist.connect("notify::selected", lambda *_: self.mark_dirty())
         g_filter.add(self.row_hostlist)
 
         row_edit = Adw.ActionRow(
-            title="Listeleri düzenle", subtitle="/etc/zapret-turkey"
+            title=T("Edit lists"), subtitle="/etc/zapret-turkey"
         )
-        btn_open = Gtk.Button(label="Klasörü Aç", valign=Gtk.Align.CENTER)
+        btn_open = Gtk.Button(label=T("Open folder"), valign=Gtk.Align.CENTER)
         btn_open.connect("clicked", self.on_open_conf_dir)
         row_edit.add_suffix(btn_open)
         g_filter.add(row_edit)
 
         # --- Şifreli DNS ---
         g_dns = Adw.PreferencesGroup(
-            title="Şifreli DNS",
-            description="ISS'niz DNS'e müdahale ediyorsa zapret tek başına yetmez. "
-            "Sorgular şifreli kanaldan taşınır.",
+            title=T("Encrypted DNS"),
+            description=T(
+                "If your ISP tampers with DNS, zapret alone is not enough. "
+                "Queries are carried over an encrypted channel."
+            ),
         )
         page.add(g_dns)
 
-        self.row_dns = Adw.SwitchRow(title="Şifreli DNS", subtitle="—")
+        self.row_dns = Adw.SwitchRow(title=T("Encrypted DNS"), subtitle="—")
         self.row_dns.connect("notify::active", lambda *_: self.on_dns_toggled())
         g_dns.add(self.row_dns)
 
-        self.row_dns_provider = Adw.ComboRow(title="Sağlayıcı")
+        self.row_dns_provider = Adw.ComboRow(title=T("Provider"))
         self.row_dns_provider.set_model(Gtk.StringList.new([l for _, l in DNS_PROVIDERS]))
         self.row_dns_provider.connect("notify::selected", lambda *_: self.on_dns_reapply())
         g_dns.add(self.row_dns_provider)
 
-        self.row_dns_backend = Adw.ComboRow(title="Yöntem")
+        self.row_dns_backend = Adw.ComboRow(title=T("Method"))
         self.row_dns_backend.set_model(Gtk.StringList.new([l for _, l in DNS_BACKENDS]))
         self.row_dns_backend.connect("notify::selected", lambda *_: self.on_dns_reapply())
         g_dns.add(self.row_dns_backend)
 
         row_dns_test = Adw.ActionRow(
-            title="DNS sınaması", subtitle="Şifreli kanal ve müdahale kontrolü"
+            title=T("DNS test"), subtitle=T("Checks the encrypted channel and interference")
         )
-        btn_dns_test = Gtk.Button(label="Sına", valign=Gtk.Align.CENTER)
+        btn_dns_test = Gtk.Button(label=T("Test"), valign=Gtk.Align.CENTER)
         btn_dns_test.connect("clicked", self.on_dns_test)
         row_dns_test.add_suffix(btn_dns_test)
         row_dns_test.set_activatable_widget(btn_dns_test)
         g_dns.add(row_dns_test)
 
         # --- Ağ geçidi ---
-        g_gw = Adw.PreferencesGroup(title="Ağdaki Cihazlarla Paylaş")
+        g_gw = Adw.PreferencesGroup(title=T("Share with devices on your network"))
         page.add(g_gw)
 
         self.row_gateway = Adw.SwitchRow(
-            title="Ağ geçidi modu",
-            subtitle="Konsol, TV vb. cihazları bu makine üzerinden geçir",
+            title=T("Gateway mode"),
+            subtitle=T("Route console, TV and similar devices through this machine"),
         )
         self.row_gateway.connect("notify::active", lambda *_: self.on_gateway_toggled())
         g_gw.add(self.row_gateway)
 
-        self.row_gw_info = Adw.ActionRow(title="LAN adresi", subtitle="—")
+        self.row_gw_info = Adw.ActionRow(title=T("LAN address"), subtitle="—")
         g_gw.add(self.row_gw_info)
 
-        exp = Adw.ExpanderRow(title="Cihaz ayarları nasıl yapılır?")
+        exp = Adw.ExpanderRow(title=T("How do I configure the device?"))
         lbl = Gtk.Label(label=GATEWAY_HELP, wrap=True, xalign=0)
         lbl.set_margin_start(12)
         lbl.set_margin_end(12)
@@ -292,18 +447,18 @@ class Window(Adw.ApplicationWindow):
         g_gw.add(exp)
 
         # --- Otomatik başlatma ---
-        g_svc = Adw.PreferencesGroup(title="Servis")
+        g_svc = Adw.PreferencesGroup(title=T("Service"))
         page.add(g_svc)
 
         self.row_autostart = Adw.SwitchRow(
-            title="Açılışta otomatik başlat",
-            subtitle="systemd birimi olarak etkinleştirir",
+            title=T("Start at boot"),
+            subtitle=T("Enables the systemd unit"),
         )
         self.row_autostart.connect("notify::active", lambda *_: self.on_autostart_toggled())
         g_svc.add(self.row_autostart)
 
         # --- Konsol ---
-        g_log = Adw.PreferencesGroup(title="Çıktı")
+        g_log = Adw.PreferencesGroup(title=T("Output"))
         page.add(g_log)
 
         self.buf = Gtk.TextBuffer()
@@ -340,9 +495,9 @@ class Window(Adw.ApplicationWindow):
         if self._loading:
             return
         self._dirty = True
-        log.debug("bekleyen değişiklik: %s", " ".join(self.pending_config()))
+        log.debug("pending change: %s", " ".join(self.pending_config()))
         self.btn_main.set_label(
-            "AYARLARI UYGULA" if self.status.get("running") == "1" else "ZAPRET'İ BAŞLAT"
+            T("APPLY SETTINGS") if self.status.get("running") == "1" else T("START ZAPRET")
         )
 
     def pending_config(self):
@@ -363,7 +518,7 @@ class Window(Adw.ApplicationWindow):
     def run_privileged(self, args, done=None, title=None):
         """pkexec ile ctl çalıştırır, çıktıyı konsola akıtır."""
         if self._busy:
-            self.toast("Başka bir işlem sürüyor")
+            self.toast(T("Another operation is in progress"))
             return
         self._busy = True
         self.progress.set_visible(True)
@@ -374,12 +529,12 @@ class Window(Adw.ApplicationWindow):
 
         try:
             proc = Gio.Subprocess.new(
-                ["pkexec", CTL, *args],
+                ["pkexec", CTL, f"--lang={LANG}", *args],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE,
             )
         except GLib.Error as exc:
             self._finish_busy()
-            self.log(f"başlatılamadı: {exc.message}")
+            self.log(f"could not start: {exc.message}")
             return
 
         stream = Gio.DataInputStream.new(proc.get_stdout_pipe())
@@ -399,7 +554,7 @@ class Window(Adw.ApplicationWindow):
                 line, _ = src.read_line_finish_utf8(res)
             except GLib.Error as exc:
                 line = None
-                self.log(f"okuma hatası: {exc.message}")
+                self.log(f"read error: {exc.message}")
             if line is None:
                 proc.wait_async(None, on_wait)
                 return
@@ -414,10 +569,10 @@ class Window(Adw.ApplicationWindow):
                 code = 1
             self._finish_busy()
             if code == 126 or code == 127:
-                self.toast("Yetki verilmedi")
+                self.toast(T("Authorisation was not given"))
             elif code != 0:
-                self.toast("İşlem hata ile bitti (çıktıya bakın)")
-            log.info("işlem bitti (çıkış kodu %s)", code)
+                self.toast(T("The operation failed (see the output)"))
+            log.info("operation finished (exit code %s)", code)
             if code == 0:
                 self._dirty = False
             if done:
@@ -438,8 +593,8 @@ class Window(Adw.ApplicationWindow):
     def refresh(self):
         code, out = ctl("status")
         if code != 0 and not out.strip():
-            self.lbl_state.set_label("KURULUM EKSİK")
-            self.lbl_sub.set_label(f"{CTL} bulunamadı. install.sh çalıştırın.")
+            self.lbl_state.set_label(T("INSTALLATION INCOMPLETE"))
+            self.lbl_sub.set_label(T("{} not found. Run install.sh.").format(CTL))
             self.btn_main.set_sensitive(False)
             return
         self.status = parse_kv(out)
@@ -451,7 +606,7 @@ class Window(Adw.ApplicationWindow):
         self._loading = True
         if self._dirty:
             engine = ENGINES[self.row_engine.get_selected()][0]
-            log.debug("bekleyen değişiklik var, kontroller yenilenmiyor")
+            log.debug("pending change, not refreshing the controls")
         else:
             engine = self.config.get("ENGINE", "zapret2")
             self.row_engine.set_selected(
@@ -472,32 +627,32 @@ class Window(Adw.ApplicationWindow):
         ready = self.status.get("engine_ready") == "1"
 
         if running and enabled:
-            self.lbl_state.set_label("SERVİS MODU AKTİF")
+            self.lbl_state.set_label(T("SERVICE MODE ACTIVE"))
         elif running:
-            self.lbl_state.set_label("AKTİF")
+            self.lbl_state.set_label(T("ACTIVE"))
         elif not ready:
-            self.lbl_state.set_label("MOTOR DERLENMEMİŞ")
+            self.lbl_state.set_label(T("ENGINE NOT BUILT"))
         else:
-            self.lbl_state.set_label("HAZIR")
+            self.lbl_state.set_label(T("READY"))
 
         strat = self.config.get("STRATEGY", "?")
         if strat == "analiz":
             custom = self.config.get("CUSTOM_ARGS", "")
-            strat = f"Analiz sonucu: {custom or 'yok (önce blockcheck)'}"
+            strat = T("Blockcheck result: {}").format(custom or T("none yet (run blockcheck)"))
         sub = f"{engine} · {strat} · hostlist: {self.config.get('HOSTLIST_MODE', '?')}"
         if self._dirty:
             idx = self.row_strategy.get_selected()
             pend = self.strategies[idx][1] if 0 <= idx < len(self.strategies) else "?"
-            sub = f"uygulanmadı → {pend}   (şu an: {sub})"
+            sub = T("not applied → {}   (currently: {})").format(pend, sub)
         self.lbl_sub.set_label(sub)
 
         self.btn_main.set_sensitive(ready)
         if self._dirty:
             self.btn_main.set_label(
-                "AYARLARI UYGULA" if running else "ZAPRET'İ BAŞLAT"
+                T("APPLY SETTINGS") if running else T("START ZAPRET")
             )
         else:
-            self.btn_main.set_label("DURDUR" if running else "ZAPRET'İ BAŞLAT")
+            self.btn_main.set_label(T("STOP") if running else T("START ZAPRET"))
         if running:
             self.btn_main.remove_css_class("suggested-action")
             self.btn_main.add_css_class("destructive-action")
@@ -509,7 +664,7 @@ class Window(Adw.ApplicationWindow):
         conflicts = parse_kv(conf_out).get("conflicts", "")
         self.banner.set_revealed(bool(conflicts))
         if conflicts:
-            self.banner.set_title(f"Çakışan DPI aracı çalışıyor: {conflicts}")
+            self.banner.set_title(T("Conflicting DPI tool running: {}").format(conflicts))
 
         _, gw = ctl("gateway-info")
         gwd = parse_kv(gw)
@@ -526,11 +681,11 @@ class Window(Adw.ApplicationWindow):
         self.row_dns.set_active(on)
 
         if on and d.get("encrypted") != "1":
-            sub = f"{backend} yapılandırıldı ama etkin değil"
+            sub = T("{} is configured but not active").format(backend)
         elif on:
             sub = f"{backend} · {d.get('servers', '').strip() or '—'}"
         else:
-            sub = f"kapalı · şu an: {d.get('servers', '').strip() or '—'}"
+            sub = T("off · currently: {}").format(d.get("servers", "").strip() or "—")
         self.row_dns.set_subtitle(sub)
 
         prov = d.get("provider") or "cloudflare"
@@ -545,7 +700,7 @@ class Window(Adw.ApplicationWindow):
         # dnscrypt-proxy kurulu değilse DoH seçeneği anlamsız
         if d.get("dnscrypt_available") == "0":
             self.row_dns_backend.set_subtitle(
-                "DoH için: dnscrypt-proxy paketini kurun"
+                T("For DoH: install the dnscrypt-proxy package")
             )
         else:
             self.row_dns_backend.set_subtitle("")
@@ -563,7 +718,7 @@ class Window(Adw.ApplicationWindow):
                 self.strategies.append((parts[0], parts[1]))
                 labels.append(parts[1])
         if not labels:
-            labels = ["(strateji listesi okunamadı)"]
+            labels = [T("(could not read the strategy list)")]
             self.strategies = [("analiz", labels[0])]
         self.row_strategy.set_model(Gtk.StringList.new(labels))
         self.row_strategy.set_selected(
@@ -585,27 +740,27 @@ class Window(Adw.ApplicationWindow):
 
     def on_main_clicked(self, *_):
         if self.status.get("running") == "1":
-            if self.btn_main.get_label() == "AYARLARI UYGULA":
-                self.run_privileged(["restart", *self.pending_config()], title="yeniden başlat")
+            if self.btn_main.get_label() == T("APPLY SETTINGS"):
+                self.run_privileged(["restart", *self.pending_config()], title=T("restart"))
             else:
-                self.run_privileged(["stop"], title="durdur")
+                self.run_privileged(["stop"], title=T("stop"))
         else:
-            self.run_privileged(["start", *self.pending_config()], title="başlat")
+            self.run_privileged(["start", *self.pending_config()], title=T("start"))
 
     def on_autostart_toggled(self):
         if self._loading:
             return
         if self.row_autostart.get_active():
-            self.run_privileged(["enable", *self.pending_config()], title="servis kur")
+            self.run_privileged(["enable", *self.pending_config()], title=T("install service"))
         else:
-            self.run_privileged(["disable"], title="servisi kaldır")
+            self.run_privileged(["disable"], title=T("remove service"))
 
     def on_gateway_toggled(self):
         if self._loading:
             return
         self.mark_dirty()
         if self.status.get("running") == "1":
-            self.run_privileged(["restart", *self.pending_config()], title="ağ geçidi")
+            self.run_privileged(["restart", *self.pending_config()], title=T("gateway mode"))
 
     def on_dns_toggled(self):
         if self._loading:
@@ -614,10 +769,10 @@ class Window(Adw.ApplicationWindow):
             provider = DNS_PROVIDERS[self.row_dns_provider.get_selected()][0]
             backend = DNS_BACKENDS[self.row_dns_backend.get_selected()][0]
             self.run_privileged(
-                ["dns", "enable", provider, backend], title="şifreli DNS aç"
+                ["dns", "enable", provider, backend], title=T("enable encrypted DNS")
             )
         else:
-            self.run_privileged(["dns", "disable"], title="şifreli DNS kapat")
+            self.run_privileged(["dns", "disable"], title=T("disable encrypted DNS"))
 
     def on_dns_reapply(self):
         # Sağlayıcı/yöntem yalnızca DNS açıkken anlamlı; açıkken değişiklik
@@ -627,82 +782,95 @@ class Window(Adw.ApplicationWindow):
         self.on_dns_toggled()
 
     def on_dns_test(self, *_):
-        self.log("\n=== DNS sınaması ===")
+        self.log("\n=== " + T("DNS test") + " ===")
         code, out = ctl("dns", "test", timeout=30)
         self.log(out.strip())
         d = parse_kv(out)
         if d.get("encrypted") == "1" and d.get("poisoning") == "ok":
-            self.toast("DNS şifreli ve temiz")
+            self.toast(T("DNS is encrypted and clean"))
         elif d.get("encrypted") == "1":
-            self.toast(f"Şifreli, ama müdahale sonucu: {d.get('poisoning')}")
+            self.toast(T("Encrypted, but interference result: {}").format(d.get("poisoning")))
         else:
-            self.toast("Şifreli DNS kapalı")
+            self.toast(T("Encrypted DNS is off"))
 
     def on_blockcheck(self, *_):
         engine = ENGINES[self.row_engine.get_selected()][0]
-        heading = "ISS analizi başlatılsın mı?"
-        body = (
-            "Blockcheck onlarca strateji dener; birkaç dakika sürebilir ve "
-            "bu sırada motor geçici olarak durdurulur. Sonuç otomatik "
-            "olarak 'Analiz Sonucu' stratejisine yazılır."
+        heading = T("Start the ISP analysis?")
+        body = T(
+            "Blockcheck tries dozens of strategies; it can take several "
+            "minutes and the engine is stopped while it runs. The result is "
+            "written to the blockcheck strategy automatically."
         )
 
         def on_resp(_d, resp):
             if resp == "run":
-                self.run_privileged(["blockcheck", engine], title=f"blockcheck ({engine})")
+                self.run_privileged(["blockcheck", engine], title=f_("blockcheck ({engine})"))
 
         # libadwaita 1.5+ AlertDialog, eski sürümlerde MessageDialog
         if hasattr(Adw, "AlertDialog"):
             dlg = Adw.AlertDialog(heading=heading, body=body)
-            dlg.add_response("cancel", "Vazgeç")
-            dlg.add_response("run", "Başlat")
+            dlg.add_response("cancel", T("Cancel"))
+            dlg.add_response("run", T("Start"))
             dlg.set_response_appearance("run", Adw.ResponseAppearance.SUGGESTED)
             dlg.connect("response", on_resp)
             dlg.present(self)
         else:
             dlg = Adw.MessageDialog(transient_for=self, heading=heading, body=body)
-            dlg.add_response("cancel", "Vazgeç")
-            dlg.add_response("run", "Başlat")
+            dlg.add_response("cancel", T("Cancel"))
+            dlg.add_response("run", T("Start"))
             dlg.set_response_appearance("run", Adw.ResponseAppearance.SUGGESTED)
             dlg.connect("response", on_resp)
             dlg.present()
 
     def on_build(self, *_):
-        self.run_privileged(["build", "all"], title="motorları derle")
+        self.run_privileged(["build", "all"], title=T("build engines"))
 
     def on_doctor(self, *_):
         code, out = ctl("doctor", timeout=40)
-        self.log("\n=== ortam teşhisi ===")
+        self.log("\n=== " + T("diagnostics") + " ===")
         self.log(out.strip())
-        self.toast("Teşhis tamamlandı" if code == 0 else "Sorun bulundu, çıktıya bakın")
+        self.toast(T("Diagnostics finished") if code == 0 else T("Problems found, see the output"))
 
     def on_dnscheck(self, *_):
         code, out = ctl("dnscheck", timeout=20)
         d = parse_kv(out)
-        self.log("\n=== DNS kontrolü ===")
+        self.log("\n=== " + T("DNS check") + " ===")
         self.log(out.strip())
         result = d.get("result")
         if result == "ok":
-            self.toast("DNS temiz görünüyor")
+            self.toast(T("DNS looks clean"))
         elif result == "poisoned":
-            self.toast("DNS müdahalesi var — DoH/DoT kullanın")
+            self.toast(T("DNS is being tampered with - use DoH/DoT"))
         else:
-            self.toast(f"DNS sonucu: {result}")
+            self.toast(T("DNS result: {}").format(result))
+
+    def set_language(self, lang):
+        """Dili kaydeder ve pencereyi yeni dille yeniden kurar."""
+        global LANG
+        if lang == LANG:
+            return
+        save_lang(lang)
+        LANG = lang
+        log.info("language switched to %s", lang)
+        app = self.get_application()
+        self.close()
+        Window(app).present()
 
     def on_open_conf_dir(self, *_):
         Gio.AppInfo.launch_default_for_uri("file:///etc/zapret-turkey", None)
 
     def on_about(self, *_):
         kwargs = dict(
-            application_name="Zapret Türkiye",
+            application_name=T("Zapret Turkey"),
             version=VERSION,
-            comments=(
-                "bol-van/zapret ve zapret2 motorları için Linux kontrol paneli.\n"
-                "Windows sürümünün (zapret-win-bundle + AutoIt) Linux karşılığı."
+            comments=T(
+                "Linux control panel for the bol-van/zapret and zapret2 engines.\n"
+                "The Linux counterpart of the Windows version "
+                "(zapret-win-bundle + AutoIt)."
             ),
             website="https://github.com/bol-van/zapret",
             license_type=Gtk.License.MIT_X11,
-            developers=["Zapret Linux Türkiye katkıcıları"],
+            developers=["Zapret Linux Turkey contributors"],
         )
         if hasattr(Adw, "AboutDialog"):
             Adw.AboutDialog(**kwargs).present(self)
@@ -720,32 +888,32 @@ class App(Adw.Application):
         super().__init__(application_id=APP_ID, flags=flags)
 
     def do_activate(self):
-        log.debug("uygulama etkinleştirildi")
+        log.debug("application activated")
         win = self.props.active_window or Window(self)
         win.present()
 
 
 def main():
     if os.geteuid() == 0:
-        log.error("Bu arayüzü root olarak çalıştırmayın; yetki gerektiren "
-                  "işlemler pkexec ile yapılır.")
+        log.error("Do not run this GUI as root; privileged actions go "
+                  "through pkexec.")
         return 1
 
-    log.info("Zapret Türkiye %s başlıyor (ctl: %s)", VERSION, CTL)
+    log.info("Zapret Turkey %s starting (lang: %s, ctl: %s)", VERSION, LANG, CTL)
     if not os.path.exists(CTL):
-        log.error("%s bulunamadı. Önce: sudo ./install.sh", CTL)
+        log.error("%s not found. Run: sudo ./install.sh", CTL)
 
     app = App()
     try:
         app.register(None)
     except GLib.Error as exc:
-        log.error("uygulama kaydedilemedi: %s", exc.message)
+        log.error("could not register the application: %s", exc.message)
         return 1
     if app.get_is_remote():
         log.warning(
-            "zaten çalışan bir Zapret Türkiye penceresi var; o pencere öne "
-            "getirilecek. Bu terminalde log görmek için önce onu kapatın ya da "
-            "ZT_NO_UNIQUE=1 zapret-turkey ile başlatın."
+            "a Zapret Turkey window is already running; it will be raised "
+            "instead. To see logs in this terminal, close it first or start "
+            "with ZT_NO_UNIQUE=1 zapret-turkey."
         )
     return app.run(None)
 
