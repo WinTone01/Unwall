@@ -1,73 +1,78 @@
-# Zapret Linux Türkiye
+# Zapret Linux Turkey
 
-Türk kullanıcılar için DPI (Deep Packet Inspection) tabanlı internet sansürünü
-atlatmaya yarayan [zapret](https://github.com/bol-van/zapret) ve
-[zapret2](https://github.com/bol-van/zapret2) motorlarının Linux kontrol paneli.
+**English** · [Türkçe](README.tr.md)
+
+A Linux control panel for the [zapret](https://github.com/bol-van/zapret) and
+[zapret2](https://github.com/bol-van/zapret2) engines, tuned for users in
+Turkey who need to get around DPI-based (Deep Packet Inspection) censorship.
 
 <p align="center">
-  <img src="docs/screenshots/arayuz-ust.png" alt="Zapret Türkiye arayüzü - durum, motor, strateji ve şifreli DNS" width="46%">
-  <img src="docs/screenshots/arayuz-alt.png" alt="Zapret Türkiye arayüzü - şifreli DNS, ağ geçidi modu ve servis" width="46%">
+  <img src="docs/screenshots/arayuz-ust.png" alt="Zapret Turkey GUI - status, engine, strategy and encrypted DNS" width="46%">
+  <img src="docs/screenshots/arayuz-alt.png" alt="Zapret Turkey GUI - encrypted DNS, gateway mode and service" width="46%">
 </p>
 
-Bu depo, aynı projenin Windows sürümünün (AutoIt + `zapret-win-bundle`) Linux
-karşılığıdır. Windows sürümü [`windows-legacy/`](windows-legacy/) klasöründe
-korunmaktadır.
+This is the Linux counterpart of the Windows application
+[zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey)
+(AutoIt + `zapret-win-bundle`).
 
-Linux'ta motorun kendisi zaten yerli çalışır: WinDivert sürücüsü yerine çekirdeğin
-**netfilter/NFQUEUE** altyapısı kullanılır, `winws.exe` yerine `nfqws` çalışır.
-Bu proje o motorun etrafına Türkiye'ye özel stratejiler, hostlist yönetimi,
-systemd servisi, şifreli DNS ve GTK4 arayüzü ekler.
+On Linux the engine itself is native: instead of the WinDivert driver the kernel's
+**netfilter/NFQUEUE** subsystem is used, and `nfqws` runs in place of `winws.exe`.
+This project wraps that engine with Turkey-specific strategies, hostlist
+management, a systemd service, encrypted DNS and a GTK4 interface.
 
-## Özellikler
+## Features
 
-- **Çoklu motor**: klasik `nfqws` (zapret) ve yeni LUA tabanlı `nfqws2` (zapret2).
-- **Hazır stratejiler**: Türk Telekom (+alternatif), Superonline (+alternatif),
-  Kablonet, Vodafone, Turkcell/Telekom mobil ve operatörden bağımsız genel
-  profiller — blockcheck beklemeden denenebilir. Kaynak: bu projenin Windows
-  sürümü ve splitwire-turkey `presets.txt`.
-- **Blockcheck**: operatörünüz için çalışan stratejiyi otomatik arar, sonucu
-  doğrudan yapılandırmaya yazar.
-- **Hostlist / excludelist**: yalnızca engellenen alan adları motordan geçer;
-  normal trafiğiniz etkilenmez. `com.tr` ve `gov.tr` varsayılan olarak hariç.
-- **systemd servisi**: açılışta otomatik başlatma, arayüz açık olmasa da çalışır.
-- **Ağ geçidi modu**: konsol, akıllı TV gibi cihazların trafiğini bu makine
-  üzerinden geçirir (Windows'taki `go-pcap2socks` + Npcap katmanının karşılığı).
-- **Şifreli DNS**: tek anahtarla DoH (`dnscrypt-proxy`, 443) veya DoT
-  (`systemd-resolved`, 853) kurulumu — Windows sürümündeki YogaDNS önerisinin
-  yerine geçer, geri alınabilir.
-- **Teşhis**: DNS müdahalesi kontrolü, çakışan araç/kuyruk tespiti.
-- **Yetki ayrımı**: arayüz normal kullanıcı olarak çalışır, ayrıcalıklı işler
-  polkit üzerinden tek bir yardımcı betiğe gider.
+- **Two engines**: the classic `nfqws` (zapret) and the new LUA-based `nfqws2`
+  (zapret2).
+- **Ready-made strategies**: Türk Telekom (+alternative), Superonline
+  (+alternative), Kablonet, Vodafone, Turkcell/Telekom mobile, plus
+  carrier-independent generic profiles — usable without running blockcheck.
+  Sourced from the Windows version of this project and from splitwire-turkey's
+  `presets.txt`.
+- **Blockcheck**: searches for a strategy that works on your ISP and writes the
+  result straight into the configuration.
+- **Hostlist / excludelist**: only blocked domains go through the engine, so the
+  rest of your traffic is untouched. `com.tr` and `gov.tr` are excluded by
+  default.
+- **systemd service**: starts at boot and keeps running with the GUI closed.
+- **Gateway mode**: routes devices on your LAN (console, smart TV) through this
+  machine — the replacement for `go-pcap2socks` + Npcap on Windows.
+- **Encrypted DNS**: one switch sets up DoH (`dnscrypt-proxy`, port 443) or DoT
+  (`systemd-resolved`, port 853). This replaces the YogaDNS recommendation from
+  the Windows version, and it is fully reversible.
+- **Diagnostics**: DNS interference check, conflicting tool and queue detection.
+- **Privilege separation**: the GUI runs as your normal user; privileged work
+  goes through a single helper script via polkit.
 
-## Kurulum
+## Installation
 
 ```bash
 sudo ./install.sh
 ```
 
-Bu tek komut her şeyi yapar:
+This single command:
 
-1. Dağıtımınızı tanır (`pacman` / `apt` / `dnf` / `zypper`) ve **gerekli +
-   isteğe bağlı tüm paketleri kurar** (`dnscrypt-proxy` dahil)
-2. Dosyaları, systemd birimini, polkit politikasını, ikonu ve uygulama menüsü
-   girdisini yerleştirir
-3. `nfqws` ve `nfqws2` motorlarını kaynaktan derler
+1. Detects your package manager (`pacman` / `apt` / `dnf` / `zypper`) and
+   **installs every required and optional package** (including `dnscrypt-proxy`)
+2. Installs the files, the systemd unit, the polkit policy, the icon and the
+   application menu entry
+3. Builds the `nfqws` and `nfqws2` engines from source
 
-Kurulum **hiçbir servisi başlatmaz ve hiçbir sistem ayarını değiştirmez**.
-DNS, otomatik başlatma, strateji seçimi, ağ geçidi — hepsi arayüzden yapılır.
+The installer **starts no service and changes no system setting**. DNS,
+autostart, strategy selection and gateway mode are all done from the GUI.
 
-Seçenekler: `--yes` (soru sorma), `--no-deps`, `--no-build`, `PREFIX=/usr`.
+Options: `--yes` (no questions), `--no-deps`, `--no-build`, `PREFIX=/usr`.
 
-Kurulumdan sonra uygulama menüsünde **Zapret Türkiye** (Ağ kategorisi) belirir;
-oradan ya da `zapret-turkey` komutuyla açabilirsiniz.
+After installation, **Zapret Turkey** appears in your application menu (Network
+category); launch it from there or with the `zapret-turkey` command.
 
-Arch/CachyOS için paket olarak kurmak isterseniz: `cd packaging && makepkg -si`
+To install as an Arch/CachyOS package: `cd packaging && makepkg -si`
 
-Kaldırmak için: `sudo ./uninstall.sh` (ayarları da silmek için `--purge`).
-Kaldırma, şifreli DNS ayarlarını da geri alır.
+To remove: `sudo ./uninstall.sh` (add `--purge` to delete settings too).
+Uninstalling also reverts the encrypted DNS configuration.
 
 <details>
-<summary>Bağımlılıkları elle kurmak isterseniz</summary>
+<summary>Installing dependencies manually</summary>
 
 ```bash
 sudo pacman -S --needed nftables python-gobject libadwaita gtk4 polkit bind gcc make pkgconf git curl luajit libnetfilter_queue libnfnetlink libmnl zlib dnscrypt-proxy
@@ -83,182 +88,180 @@ sudo dnf install nftables python3-gobject libadwaita gtk4 polkit bind-utils gcc 
 
 </details>
 
-`build` komutu `bol-van/zapret` ve `bol-van/zapret2` depolarını
-`/opt/zapret-turkey/src` altına klonlayıp `nfqws` / `nfqws2` ikililerini derler;
-sonradan `sudo zapret-turkeyctl build` ile motorları güncelleyebilirsiniz.
+`build` clones `bol-van/zapret` and `bol-van/zapret2` into
+`/opt/zapret-turkey/src` and compiles the `nfqws` / `nfqws2` binaries. Run
+`sudo zapret-turkeyctl build` later to update the engines.
 
-## Kullanım
+## Usage
 
-Grafik arayüzden motoru, stratejiyi ve hostlist modunu seçip **ZAPRET'İ BAŞLAT**
-demeniz yeterli. Seçimleriniz siz düğmeye basana kadar uygulanmaz; o ana kadar
-durum satırında `uygulanmadı → ...` şeklinde görünür ve düğme
-**AYARLARI UYGULA** olur. "Açılışta otomatik başlat" anahtarı systemd birimini
-etkinleştirir; arayüz kapalıyken de çalışmaya devam eder.
+Pick an engine, a strategy and a hostlist mode in the GUI, then press
+**ZAPRET'İ BAŞLAT** (start). Your choices are not applied until you press that
+button; until then the status line shows `uygulanmadı → ...` (not applied) and
+the button reads **AYARLARI UYGULA** (apply settings). The "start at boot"
+switch enables the systemd unit, which keeps running with the GUI closed.
 
-Arayüz normal kullanıcı olarak çalışır; yalnızca yetki gerektiren işlemler
-(başlatma, servis, DNS, ağ kuralları) polkit üzerinden parola sorar.
+The GUI runs as your normal user; only privileged actions (starting the engine,
+the service, DNS, firewall rules) ask for a password through polkit.
 
-Terminalden:
+From the terminal:
 
 ```bash
 sudo zapret-turkeyctl start STRATEGY=superonline ENGINE=zapret2
 ```
 
-| Komut | İş |
+| Command | What it does |
 |---|---|
-| `zapret-turkeyctl status` | durum (key=value) |
-| `zapret-turkeyctl strategies [motor]` | hazır strateji listesi |
-| `zapret-turkeyctl config get\|set` | ayarları oku / yaz |
-| `sudo zapret-turkeyctl start\|stop\|restart` | motoru çalıştır / durdur |
-| `sudo zapret-turkeyctl enable\|disable` | açılışta otomatik başlatma |
-| `sudo zapret-turkeyctl blockcheck [motor]` | ISS analizi |
-| `zapret-turkeyctl dnscheck [domain]` | DNS müdahalesi kontrolü |
-| `sudo zapret-turkeyctl dns enable\|disable` | şifreli DNS (DoT/DoH) aç / kapat |
-| `zapret-turkeyctl dns status\|test` | şifreli DNS durumu / sınaması |
-| `zapret-turkeyctl doctor` | ortam / çakışma teşhisi |
-| `sudo zapret-turkeyctl disable-conflicts` | çakışan DPI araçlarını kapat |
-| `zapret-turkeyctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
+| `zapret-turkeyctl status` | current state (key=value) |
+| `zapret-turkeyctl strategies [engine]` | list ready-made strategies |
+| `zapret-turkeyctl config get\|set` | read / write settings |
+| `sudo zapret-turkeyctl start\|stop\|restart` | run / stop the engine |
+| `sudo zapret-turkeyctl enable\|disable` | start at boot |
+| `sudo zapret-turkeyctl blockcheck [engine]` | ISP analysis |
+| `zapret-turkeyctl dnscheck [domain]` | DNS interference check |
+| `sudo zapret-turkeyctl dns enable\|disable` | turn encrypted DNS (DoT/DoH) on / off |
+| `zapret-turkeyctl dns status\|test` | encrypted DNS state / test |
+| `zapret-turkeyctl doctor` | environment and conflict diagnostics |
+| `sudo zapret-turkeyctl disable-conflicts` | shut down conflicting DPI tools |
+| `zapret-turkeyctl print-cmd`, `print-nft` | show the generated command and rules |
 
-Ayar dosyası: `/etc/zapret-turkey/zapret-turkey.conf`
-Listeler: `/etc/zapret-turkey/{hostlist,excludelist,autohostlist}.txt`
-Günlükler: `journalctl -u zapret-turkey -f` ve `/var/log/zapret-turkey/`
+Configuration: `/etc/zapret-turkey/zapret-turkey.conf`
+Lists: `/etc/zapret-turkey/{hostlist,excludelist,autohostlist}.txt`
+Logs: `journalctl -u zapret-turkey -f` and `/var/log/zapret-turkey/`
 
-## Şifreli DNS (YogaDNS karşılığı)
+## Encrypted DNS (the YogaDNS equivalent)
 
-ISS'niz DNS'e müdahale ediyorsa zapret tek başına yetmez. Arayüzdeki **Şifreli
-DNS** anahtarı ya da `zapret-turkeyctl dns` komutu bunu kurar; elle dosya
-düzenlemenize gerek yoktur.
+If your ISP tampers with DNS, zapret alone is not enough. The **Şifreli DNS**
+(encrypted DNS) switch in the GUI, or the `zapret-turkeyctl dns` command, sets
+this up for you — no manual file editing.
 
-İki yöntem var:
-
-| Yöntem | Taşıma | Not |
+| Method | Transport | Notes |
 |---|---|---|
-| **DoH** — `dnscrypt-proxy` | 443/tcp | Normal HTTPS'ten ayırt edilemez, engellenmesi zor. `dnscrypt-proxy` paketi gerekir. |
-| **DoT** — `systemd-resolved` | 853/tcp | Ek paket gerektirmez, ama 853 ayrı bir port olduğu için bazı ISS'ler kapatabilir. |
+| **DoH** — `dnscrypt-proxy` | 443/tcp | Indistinguishable from ordinary HTTPS, hard to block. Requires the `dnscrypt-proxy` package. |
+| **DoT** — `systemd-resolved` | 853/tcp | No extra package needed, but 853 is a separate port that some ISPs close. |
 
 ```bash
 sudo zapret-turkeyctl dns enable cloudflare auto
 ```
 
-`auto`, `dnscrypt-proxy` kuruluysa DoH'u, değilse DoT'u seçer. Sağlayıcı olarak
-`cloudflare`, `google` veya `quad9` verilebilir.
+`auto` picks DoH when `dnscrypt-proxy` is installed and falls back to DoT.
+Providers: `cloudflare`, `google` or `quad9`.
 
 ```bash
 zapret-turkeyctl dns test
 sudo zapret-turkeyctl dns disable
 ```
 
-Ne yapıldığı:
+What happens under the hood:
 
-- **DoT**: `/etc/systemd/resolved.conf.d/90-zapret-turkey.conf` içine
-  `DNSOverTLS=yes` + sağlayıcı sunucuları yazılır. `Domains=~.` sayesinde
-  DHCP ile gelen ISS DNS'i yerine bunlar kullanılır; kendi arama alanı olan
-  bağlantılar (VPN, Tailscale) etkilenmez.
-- **DoH**: `dnscrypt-proxy` `127.0.0.1:5300`'de DoH istemcisi olarak çalışır,
-  `systemd-resolved` upstream olarak oraya bakar. Mevcut
-  `dnscrypt-proxy.toml` üzerine yazmadan önce `.zapret-turkey.bak` olarak
-  yedeklenir; `dns disable` yedeği geri yükler.
+- **DoT**: a drop-in at `/etc/systemd/resolved.conf.d/90-zapret-turkey.conf`
+  with `DNSOverTLS=yes` and the provider's servers. `Domains=~.` makes these
+  win over the ISP servers handed out by DHCP; links with their own search
+  domains (VPN, Tailscale) are unaffected.
+- **DoH**: `dnscrypt-proxy` runs as a DoH client on `127.0.0.1:5300` and
+  `systemd-resolved` uses it as its upstream. An existing
+  `dnscrypt-proxy.toml` is backed up as `.zapret-turkey.bak` before being
+  replaced; `dns disable` restores it.
 
-`dns disable` her iki değişikliği de geri alır — kaldırma betiği de bunu çağırır.
+`dns disable` reverts both changes — the uninstall script calls it too.
 
-DoH için paket: `sudo pacman -S dnscrypt-proxy`
+## Sharing with devices on your network (console, TV)
 
-## Ağdaki Cihazlarla Paylaş (konsol, TV)
+Turn on the **Ağ geçidi modu** (gateway mode) switch. This machine becomes a
+NAT router for the local network (`ip_forward` + `nft masquerade`) and the
+forwarded traffic goes through zapret as well. The Npcap + `go-pcap2socks`
+layer used on Windows is not needed; routing is done by the kernel.
 
-Arayüzdeki **Ağ geçidi modu** anahtarını açın. Bu makine yerel ağ için NAT yapan
-bir yönlendiriciye dönüşür (`ip_forward` + `nft masquerade`) ve yönlendirilen
-trafik de zapret'ten geçer. Windows'taki Npcap + `go-pcap2socks` katmanına gerek
-yoktur; yönlendirme çekirdek tarafından yapılır.
+In the manual network settings of the device (PlayStation, Xbox, Switch, TV):
 
-Cihazın (PlayStation, Xbox, Switch, TV) manuel ağ ayarlarına:
-
-- **IP adresi**: ağınızda boş bir adres (örn. `192.168.1.50`)
-- **Alt ağ maskesi**: ağınızla aynı (genelde `255.255.255.0`)
-- **Ağ geçidi**: bu bilgisayarın LAN IP adresi (arayüzde "LAN adresi" satırında yazar)
+- **IP address**: a free address on your network (e.g. `192.168.1.50`)
+- **Subnet mask**: same as your network (usually `255.255.255.0`)
+- **Gateway**: this computer's LAN IP (shown in the "LAN adresi" row of the GUI)
 - **DNS**: `1.1.1.1` / `8.8.8.8`
 
-Not: `firewalld`/`ufw` gibi bir güvenlik duvarı `forward` zincirinde varsayılan
-olarak paket düşürüyorsa yönlendirmeye izin vermeniz gerekir.
+Note: if a firewall such as `firewalld` or `ufw` drops packets in the `forward`
+chain by default, you need to allow forwarding.
 
-## Windows sürümünden farklar
+## Differences from the Windows version
 
-| Windows | Linux karşılığı |
+| Windows | Linux equivalent |
 |---|---|
 | `winws.exe` / `winws2.exe` | `nfqws` / `nfqws2` |
-| WinDivert sürücüsü | netfilter NFQUEUE (`nfnetlink_queue`) |
-| `--wf-tcp` / `--wf-udp` / `--wf-l3` | nftables kuralları (`queue num ... bypass`) |
+| WinDivert driver | netfilter NFQUEUE (`nfnetlink_queue`) |
+| `--wf-tcp` / `--wf-udp` / `--wf-l3` | nftables rules (`queue num ... bypass`) |
 | `sc create ZapretService` | `zapret-turkey.service` (systemd) |
-| UAC / `#RequireAdmin` | polkit + `pkexec` (yalnızca yardımcı betik yükselir) |
+| UAC / `#RequireAdmin` | polkit + `pkexec` (only the helper script is elevated) |
 | Npcap + `go-pcap2socks` | `ip_forward` + `nft masquerade` |
-| YogaDNS (elle kurulur) | `dns enable` ile tümleşik DoH/DoT (`dnscrypt-proxy` / `systemd-resolved`) |
+| YogaDNS (installed by hand) | built-in DoH/DoT via `dns enable` (`dnscrypt-proxy` / `systemd-resolved`) |
 | `nslookup`, `ipconfig /flushdns` | `dig`, `resolvectl flush-caches` |
-| GoodbyeDPI çakışma kontrolü | `nfqws`/`tpws`/`byedpi`/TUN ve kuyruk çakışması (`doctor`) |
+| GoodbyeDPI conflict check | `nfqws`/`tpws`/`byedpi`/TUN and queue conflicts (`doctor`) |
 | `config.ini` | `/etc/zapret-turkey/zapret-turkey.conf` |
 | AutoIt GUI | GTK4 + libadwaita (Python) |
 
-Strateji parametreleri (`--dpi-desync=…`, `--lua-desync=…`, `--hostlist…`) her iki
-platformda aynıdır; yalnızca trafiği motora yönlendirme katmanı değişir.
+The strategy parameters themselves (`--dpi-desync=…`, `--lua-desync=…`,
+`--hostlist…`) are identical on both platforms; only the layer that steers
+traffic into the engine differs.
 
-## Proje yapısı
+## Project layout
 
 ```
-bin/zapret-turkeyctl          ayrıcalıklı işlerin tamamı (CLI + polkit hedefi)
-bin/zapret-turkey             GUI başlatıcı
-gui/zapret_turkey_gui.py      GTK4 / libadwaita arayüzü
-lib/strategies.conf           hazır strateji profilleri
-etc/zapret-turkey.conf        varsayılan yapılandırma
-systemd/zapret-turkey.service systemd birimi
-polkit/…policy                yetki yükseltme politikası
-packaging/PKGBUILD            Arch paketi
-windows-legacy/               özgün Windows (AutoIt) sürümü
+bin/zapret-turkeyctl          all privileged work (CLI + polkit target)
+bin/zapret-turkey             GUI launcher
+gui/zapret_turkey_gui.py      GTK4 / libadwaita interface
+lib/strategies.conf           ready-made strategy profiles
+etc/zapret-turkey.conf        default configuration
+systemd/zapret-turkey.service systemd unit
+polkit/…policy                privilege escalation policy
+packaging/PKGBUILD            Arch package
+docs/screenshots/             interface screenshots
 ```
 
-## Sorun giderme
+## Troubleshooting
 
 ```bash
 zapret-turkeyctl doctor
 ```
 
-Arayüzü terminalden çalıştırırsanız her şey konsola akar; ayrıntı için:
+Run the GUI from a terminal and everything is logged to the console; for more
+detail:
 
 ```bash
 ZT_DEBUG=1 zapret-turkey
 ```
 
-Uygulama tek örnekli çalışır: menüden açılmış bir pencere varken terminalden
-başlatmak yalnızca o pencereyi öne getirir ve terminale log gelmez. Hata
-ayıklarken ayrı bir örnek isterseniz:
+The application is single-instance: if a window opened from the menu is already
+running, launching it from a terminal only raises that window and prints no
+logs. To get a separate instance while debugging:
 
 ```bash
 ZT_NO_UNIQUE=1 ZT_DEBUG=1 zapret-turkey
 ```
 
-- **Motor başlamıyor**: `journalctl -u zapret-turkey -n 50`
-- **Seçtiğim strateji geri dönüyor**: seçim "AYARLARI UYGULA" / "ZAPRET'İ
-  BAŞLAT" düğmesine basılana kadar yalnızca beklemededir; durum satırında
-  `uygulanmadı → ...` şeklinde görünür.
-- **Hiçbir şey değişmedi**: `sudo nft list table ip zapret_turkey` ile kuralların
-  yüklendiğini doğrulayın; hostlist modu `manual` ise alan adının listede olduğundan
-  emin olun.
-- **QUIC/HTTP3 siteleri bozuldu**: config'te `PORTS_UDP=` (boş) yapın.
-- **Başka bir DPI aracı çalışıyor**: `byedpi`, `tpws`, upstream `zapret.service`
-  veya TUN kuran bir VPN aynı anda açıksa kuyruk çakışır.
-- **Sistemde zaten upstream zapret kurulu** (`/opt/zapret`, `zapret.service`):
-  ikisini aynı anda çalıştırmayın — `sudo systemctl disable --now zapret`.
-  Bu projenin varsayılan kuyruk numarası çakışmayı azaltmak için `210`'dur
-  (upstream `200` kullanır). Ayrıca `build` adımını atlayıp mevcut
-  `/opt/zapret` ve `/opt/zapret2` ikilileri doğrudan kullanılabilir; motor
-  bulunamazsa oralara da bakılır.
+- **The engine will not start**: `journalctl -u zapret-turkey -n 50`
+- **My strategy selection reverts**: the selection is only pending until you
+  press **AYARLARI UYGULA** / **ZAPRET'İ BAŞLAT**; the status line shows it as
+  `uygulanmadı → ...`.
+- **Nothing changed**: check that the rules are loaded with
+  `sudo nft list table ip zapret_turkey`; if the hostlist mode is `manual`, make
+  sure the domain is in the list.
+- **QUIC/HTTP3 sites broke**: set `PORTS_UDP=` (empty) in the configuration.
+- **Another DPI tool is running**: `byedpi`, `tpws`, the upstream
+  `zapret.service` or a VPN that creates a TUN device will fight over the queue.
+- **Upstream zapret is already installed** (`/opt/zapret`, `zapret.service`):
+  do not run both at once — `sudo systemctl disable --now zapret`. This
+  project defaults to queue number `210` to reduce collisions (upstream uses
+  `200`). You can also skip the `build` step and use the existing
+  `/opt/zapret` and `/opt/zapret2` binaries; they are looked up automatically
+  when no locally built engine is found.
 
-## Teşekkürler
+## Credits
 
-- Bu projenin temelini oluşturan Windows sürümü
-  [zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey) için
-  geliştiricisi [@alimali54](https://github.com/alimali54)
-- Zapret ve zapret2 motorları için [@bol-van](https://github.com/bol-van)
-- Otomatik blockcheck mantığı ve ilhamı için
-  [splitwire-turkey](https://github.com/cagritaskn/splitwire-turkey) geliştiricisi
-  [@cagritaskn](https://github.com/cagritaskn)
-- Windows sürümündeki LAN paylaşımı fikri için
-  [go-pcap2socks](https://github.com/DaniilSokolyuk/go-pcap2socks) geliştiricisi
-  [@DaniilSokolyuk](https://github.com/DaniilSokolyuk)
+- [@alimali54](https://github.com/alimali54) for
+  [zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey), the
+  Windows version this project is based on
+- [@bol-van](https://github.com/bol-van) for the zapret and zapret2 engines
+- [@cagritaskn](https://github.com/cagritaskn), developer of
+  [splitwire-turkey](https://github.com/cagritaskn/splitwire-turkey), for the
+  automatic blockcheck logic and the strategy presets
+- [@DaniilSokolyuk](https://github.com/DaniilSokolyuk), developer of
+  [go-pcap2socks](https://github.com/DaniilSokolyuk/go-pcap2socks), for the LAN
+  sharing idea used in the Windows version

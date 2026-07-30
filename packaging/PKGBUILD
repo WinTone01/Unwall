@@ -62,6 +62,7 @@ package() {
 	install -Dm644 share/zapret-turkey.svg \
 		"$pkgdir/usr/share/icons/hicolor/scalable/apps/zapret-turkey.svg"
 	install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+	install -Dm644 README.tr.md "$pkgdir/usr/share/doc/$pkgname/README.tr.md"
 
 	echo 'nfnetlink_queue' > "$srcdir/modules.conf"
 	install -Dm644 "$srcdir/modules.conf" "$pkgdir/usr/lib/modules-load.d/zapret-turkey.conf"
