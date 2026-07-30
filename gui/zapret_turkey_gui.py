@@ -6,9 +6,12 @@ Arayüz normal kullanıcı olarak çalışır. Ayrıcalık gerektiren her iş
 root olarak çalıştırılmamalıdır.
 """
 
+import logging
 import os
 import shutil
 import subprocess
+import sys
+import traceback
 
 import gi
 
@@ -18,6 +21,24 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "org.zapret.turkey"
 VERSION = "1.0.0"
+
+# Terminalden çalıştırıldığında her şey konsola aksın. Ayrıntı için:
+#   ZT_DEBUG=1 zapret-turkey
+logging.basicConfig(
+    level=logging.DEBUG if os.environ.get("ZT_DEBUG") else logging.INFO,
+    format="%(asctime)s %(levelname)-7s %(message)s",
+    datefmt="%H:%M:%S",
+    stream=sys.stderr,
+)
+log = logging.getLogger("zapret-turkey")
+
+
+def _excepthook(exc_type, exc, tb):
+    """Yakalanmamış hatalar sessizce yutulmasın."""
+    log.error("YAKALANMAMIŞ HATA:\n%s", "".join(traceback.format_exception(exc_type, exc, tb)))
+
+
+sys.excepthook = _excepthook
 
 CTL = os.environ.get("ZT_CTL", shutil.which("zapret-turkeyctl") or "/usr/local/bin/zapret-turkeyctl")
 
@@ -62,8 +83,14 @@ def ctl(*args, timeout=15):
         p = subprocess.run(
             [CTL, *args], capture_output=True, text=True, timeout=timeout
         )
-        return p.returncode, (p.stdout or "") + (p.stderr or "")
+        out = (p.stdout or "") + (p.stderr or "")
+        if p.returncode == 0:
+            log.debug("ctl %s -> 0", " ".join(args))
+        else:
+            log.warning("ctl %s -> %s\n%s", " ".join(args), p.returncode, out.strip())
+        return p.returncode, out
     except (OSError, subprocess.TimeoutExpired) as exc:
+        log.error("ctl %s çalıştırılamadı: %s", " ".join(args), exc)
         return 1, str(exc)
 
 
@@ -85,6 +112,9 @@ class Window(Adw.ApplicationWindow):
         self.strategies = []
         self._busy = False
         self._loading = True
+        # Kullanıcı bir seçim değiştirip henüz uygulamadıysa, periyodik durum
+        # yenilemesi kontrolleri config'teki eski değerlere geri çevirmesin.
+        self._dirty = False
 
         self.toasts = Adw.ToastOverlay()
         self.set_content(self.toasts)
@@ -292,6 +322,9 @@ class Window(Adw.ApplicationWindow):
     # -----------------------------------------------------------------
 
     def log(self, text):
+        for line in text.rstrip("\n").splitlines():
+            if line.strip():
+                log.info("%s", line)
         end = self.buf.get_end_iter()
         self.buf.insert(end, text if text.endswith("\n") else text + "\n")
         GLib.idle_add(
@@ -304,10 +337,13 @@ class Window(Adw.ApplicationWindow):
         self.toasts.add_toast(Adw.Toast.new(text))
 
     def mark_dirty(self):
-        if not self._loading:
-            self.btn_main.set_label(
-                "AYARLARI UYGULA" if self.status.get("running") == "1" else "ZAPRET'İ BAŞLAT"
-            )
+        if self._loading:
+            return
+        self._dirty = True
+        log.debug("bekleyen değişiklik: %s", " ".join(self.pending_config()))
+        self.btn_main.set_label(
+            "AYARLARI UYGULA" if self.status.get("running") == "1" else "ZAPRET'İ BAŞLAT"
+        )
 
     def pending_config(self):
         """Arayüzdeki seçimleri KEY=VALUE listesine çevirir."""
@@ -381,6 +417,9 @@ class Window(Adw.ApplicationWindow):
                 self.toast("Yetki verilmedi")
             elif code != 0:
                 self.toast("İşlem hata ile bitti (çıktıya bakın)")
+            log.info("işlem bitti (çıkış kodu %s)", code)
+            if code == 0:
+                self._dirty = False
             if done:
                 done(code)
             self.refresh()
@@ -407,17 +446,23 @@ class Window(Adw.ApplicationWindow):
         _, cfg_out = ctl("config", "get")
         self.config = parse_kv(cfg_out)
 
+        # Bekleyen (henüz uygulanmamış) bir seçim varsa kontrollere dokunma;
+        # yoksa periyodik yenileme kullanıcının seçimini geri alırdı.
         self._loading = True
-        engine = self.config.get("ENGINE", "zapret2")
-        self.row_engine.set_selected(
-            next((i for i, (e, _) in enumerate(ENGINES) if e == engine), 0)
-        )
-        self._load_strategies(engine, self.config.get("STRATEGY", "analiz"))
-        mode = self.config.get("HOSTLIST_MODE", "auto")
-        self.row_hostlist.set_selected(
-            next((i for i, (m, _) in enumerate(HOSTLIST_MODES) if m == mode), 0)
-        )
-        self.row_gateway.set_active(self.config.get("GATEWAY_MODE") == "1")
+        if self._dirty:
+            engine = ENGINES[self.row_engine.get_selected()][0]
+            log.debug("bekleyen değişiklik var, kontroller yenilenmiyor")
+        else:
+            engine = self.config.get("ENGINE", "zapret2")
+            self.row_engine.set_selected(
+                next((i for i, (e, _) in enumerate(ENGINES) if e == engine), 0)
+            )
+            self._load_strategies(engine, self.config.get("STRATEGY", "analiz"))
+            mode = self.config.get("HOSTLIST_MODE", "auto")
+            self.row_hostlist.set_selected(
+                next((i for i, (m, _) in enumerate(HOSTLIST_MODES) if m == mode), 0)
+            )
+            self.row_gateway.set_active(self.config.get("GATEWAY_MODE") == "1")
         self.row_autostart.set_active(self.status.get("enabled") == "1")
         self._refresh_dns()
         self._loading = False
@@ -439,12 +484,20 @@ class Window(Adw.ApplicationWindow):
         if strat == "analiz":
             custom = self.config.get("CUSTOM_ARGS", "")
             strat = f"Analiz sonucu: {custom or 'yok (önce blockcheck)'}"
-        self.lbl_sub.set_label(
-            f"{engine} · {strat} · hostlist: {self.config.get('HOSTLIST_MODE', '?')}"
-        )
+        sub = f"{engine} · {strat} · hostlist: {self.config.get('HOSTLIST_MODE', '?')}"
+        if self._dirty:
+            idx = self.row_strategy.get_selected()
+            pend = self.strategies[idx][1] if 0 <= idx < len(self.strategies) else "?"
+            sub = f"uygulanmadı → {pend}   (şu an: {sub})"
+        self.lbl_sub.set_label(sub)
 
         self.btn_main.set_sensitive(ready)
-        self.btn_main.set_label("DURDUR" if running else "ZAPRET'İ BAŞLAT")
+        if self._dirty:
+            self.btn_main.set_label(
+                "AYARLARI UYGULA" if running else "ZAPRET'İ BAŞLAT"
+            )
+        else:
+            self.btn_main.set_label("DURDUR" if running else "ZAPRET'İ BAŞLAT")
         if running:
             self.btn_main.remove_css_class("suggested-action")
             self.btn_main.add_css_class("destructive-action")
@@ -659,19 +712,42 @@ class Window(Adw.ApplicationWindow):
 
 class App(Adw.Application):
     def __init__(self):
-        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        flags = Gio.ApplicationFlags.DEFAULT_FLAGS
+        # ZT_NO_UNIQUE=1 ile her çalıştırma kendi penceresini açar; hata
+        # ayıklarken çalışan örneğe devredilmesini istemediğimizde işe yarar.
+        if os.environ.get("ZT_NO_UNIQUE"):
+            flags |= Gio.ApplicationFlags.NON_UNIQUE
+        super().__init__(application_id=APP_ID, flags=flags)
 
     def do_activate(self):
+        log.debug("uygulama etkinleştirildi")
         win = self.props.active_window or Window(self)
         win.present()
 
 
 def main():
     if os.geteuid() == 0:
-        print("Bu arayüzü root olarak çalıştırmayın; yetki gerektiren işlemler "
-              "pkexec ile yapılır.")
+        log.error("Bu arayüzü root olarak çalıştırmayın; yetki gerektiren "
+                  "işlemler pkexec ile yapılır.")
         return 1
-    return App().run(None)
+
+    log.info("Zapret Türkiye %s başlıyor (ctl: %s)", VERSION, CTL)
+    if not os.path.exists(CTL):
+        log.error("%s bulunamadı. Önce: sudo ./install.sh", CTL)
+
+    app = App()
+    try:
+        app.register(None)
+    except GLib.Error as exc:
+        log.error("uygulama kaydedilemedi: %s", exc.message)
+        return 1
+    if app.get_is_remote():
+        log.warning(
+            "zaten çalışan bir Zapret Türkiye penceresi var; o pencere öne "
+            "getirilecek. Bu terminalde log görmek için önce onu kapatın ya da "
+            "ZT_NO_UNIQUE=1 zapret-turkey ile başlatın."
+        )
+    return app.run(None)
 
 
 if __name__ == "__main__":

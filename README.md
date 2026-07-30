@@ -208,7 +208,24 @@ windows-legacy/               özgün Windows (AutoIt) sürümü
 zapret-turkeyctl doctor
 ```
 
+Arayüzü terminalden çalıştırırsanız her şey konsola akar; ayrıntı için:
+
+```bash
+ZT_DEBUG=1 zapret-turkey
+```
+
+Uygulama tek örnekli çalışır: menüden açılmış bir pencere varken terminalden
+başlatmak yalnızca o pencereyi öne getirir ve terminale log gelmez. Hata
+ayıklarken ayrı bir örnek isterseniz:
+
+```bash
+ZT_NO_UNIQUE=1 ZT_DEBUG=1 zapret-turkey
+```
+
 - **Motor başlamıyor**: `journalctl -u zapret-turkey -n 50`
+- **Seçtiğim strateji geri dönüyor**: seçim "AYARLARI UYGULA" / "ZAPRET'İ
+  BAŞLAT" düğmesine basılana kadar yalnızca beklemededir; durum satırında
+  `uygulanmadı → ...` şeklinde görünür.
 - **Hiçbir şey değişmedi**: `sudo nft list table ip zapret_turkey` ile kuralların
   yüklendiğini doğrulayın; hostlist modu `manual` ise alan adının listede olduğundan
   emin olun.
