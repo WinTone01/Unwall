@@ -252,6 +252,9 @@ ZT_NO_UNIQUE=1 ZT_DEBUG=1 zapret-turkey
 
 ## Teşekkürler
 
+- Bu projenin temelini oluşturan Windows sürümü
+  [zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey) için
+  geliştiricisi [@alimali54](https://github.com/alimali54)
 - Zapret ve zapret2 motorları için [@bol-van](https://github.com/bol-van)
 - Otomatik blockcheck mantığı ve ilhamı için
   [splitwire-turkey](https://github.com/cagritaskn/splitwire-turkey) geliştiricisi
