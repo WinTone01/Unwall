@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>Zapret Linux Türkiye</vendor>
+  <vendor_url>https://github.com/bol-van/zapret</vendor_url>
+
+  <action id="org.zapret.turkey.manage">
+    <description>Zapret motorunu yönet</description>
+    <description xml:lang="en">Manage the Zapret engine</description>
+    <message>Zapret ağ ayarlarını değiştirmek için kimlik doğrulaması gerekiyor</message>
+    <message xml:lang="en">Authentication is required to change Zapret network settings</message>
+    <icon_name>network-transmit-receive</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@BINDIR@/zapret-turkeyctl</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+</policyconfig>

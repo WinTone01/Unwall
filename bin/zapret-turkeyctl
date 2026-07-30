@@ -1,0 +1,889 @@
+#!/usr/bin/env bash
+# zapret-turkeyctl - Zapret Linux Türkiye kontrol aracı
+#
+# Ayrıcalıklı işlerin tamamı burada toplanır; grafik arayüz bu betiği
+# pkexec üzerinden çağırır. Tek başına bir CLI olarak da kullanılabilir.
+
+set -euo pipefail
+
+VERSION="1.0.0"
+
+# --- Yollar (paketleme sırasında sed ile değiştirilir) ---
+ZT_LIB="${ZT_LIB:-/usr/local/lib/zapret-turkey}"
+ZT_ETC="${ZT_ETC:-/etc/zapret-turkey}"
+ZT_OPT="${ZT_OPT:-/opt/zapret-turkey}"
+ZT_LOG="${ZT_LOG:-/var/log/zapret-turkey}"
+
+CONF="$ZT_ETC/zapret-turkey.conf"
+STRATEGY_FILE="$ZT_LIB/strategies.conf"
+SRC_DIR="$ZT_OPT/src"
+ENGINE_DIR="$ZT_OPT/engines"
+UNIT="zapret-turkey.service"
+
+NFT_TABLE="zapret_turkey"
+DESYNC_MARK="0x40000000"
+
+# --- Varsayılanlar (config eksikse) ---
+ENGINE="zapret2"
+STRATEGY="turk-telekom"
+CUSTOM_ARGS=""
+HOSTLIST_MODE="auto"
+QNUM="210"
+PORTS_TCP="80,443"
+PORTS_UDP="443"
+GATEWAY_MODE="0"
+WAN_IFACE=""
+ENABLE_IPV6="0"
+
+die() { printf 'hata: %s\n' "$*" >&2; exit 1; }
+info() { printf '==> %s\n' "$*"; }
+warn() { printf 'uyarı: %s\n' "$*" >&2; }
+
+need_root() {
+	[ "$(id -u)" -eq 0 ] || die "bu komut root gerektirir (pkexec/sudo ile çalıştırın)"
+}
+
+load_config() {
+	if [ -r "$CONF" ]; then
+		# shellcheck disable=SC1090
+		. "$CONF"
+	fi
+}
+
+# =====================================================================
+# Yapılandırma
+# =====================================================================
+
+cmd_config() {
+	local action="${1:-get}"; shift || true
+	case "$action" in
+	get)
+		load_config
+		if [ $# -gt 0 ]; then
+			local k
+			for k in "$@"; do printf '%s\n' "${!k-}"; done
+		else
+			printf 'ENGINE=%s\nSTRATEGY=%s\nCUSTOM_ARGS=%s\nHOSTLIST_MODE=%s\nQNUM=%s\nPORTS_TCP=%s\nPORTS_UDP=%s\nGATEWAY_MODE=%s\nWAN_IFACE=%s\nENABLE_IPV6=%s\n' \
+				"$ENGINE" "$STRATEGY" "$CUSTOM_ARGS" "$HOSTLIST_MODE" "$QNUM" \
+				"$PORTS_TCP" "$PORTS_UDP" "$GATEWAY_MODE" "$WAN_IFACE" "$ENABLE_IPV6"
+		fi
+		;;
+	set)
+		need_root
+		[ $# -gt 0 ] || die "kullanım: config set KEY=VALUE [KEY=VALUE ...]"
+		[ -f "$CONF" ] || { mkdir -p "$ZT_ETC"; : > "$CONF"; }
+		local pair key val
+		for pair in "$@"; do
+			key="${pair%%=*}"
+			val="${pair#*=}"
+			case "$key" in
+			ENGINE|STRATEGY|CUSTOM_ARGS|HOSTLIST_MODE|QNUM|PORTS_TCP|PORTS_UDP|GATEWAY_MODE|WAN_IFACE|ENABLE_IPV6) ;;
+			*) die "bilinmeyen ayar: $key" ;;
+			esac
+			# mevcut satırı sil, sonuna yenisini ekle
+			sed -i "/^[[:space:]]*${key}=/d" "$CONF"
+			printf '%s=%q\n' "$key" "$val" >> "$CONF"
+		done
+		;;
+	*) die "kullanım: config {get|set}" ;;
+	esac
+}
+
+# =====================================================================
+# Stratejiler
+# =====================================================================
+
+# strategies [motor]  ->  kimlik<TAB>etiket<TAB>argümanlar
+cmd_strategies() {
+	local want="${1:-}"
+	[ -n "$want" ] || { load_config; want="$ENGINE"; }
+	[ -r "$STRATEGY_FILE" ] || die "strateji dosyası yok: $STRATEGY_FILE"
+	printf 'analiz\tAnaliz Sonucu (blockcheck)\t\n'
+	local eng id label args
+	while IFS='|' read -r eng id label args; do
+		case "$eng" in ''|\#*) continue ;; esac
+		[ "$eng" = "$want" ] || continue
+		printf '%s\t%s\t%s\n' "$id" "$label" "$args"
+	done < "$STRATEGY_FILE"
+}
+
+strategy_args() {
+	# stdout: seçili stratejinin argümanları
+	if [ "$STRATEGY" = "analiz" ]; then
+		printf '%s' "$CUSTOM_ARGS"
+		return 0
+	fi
+	local eng id label args
+	while IFS='|' read -r eng id label args; do
+		case "$eng" in ''|\#*) continue ;; esac
+		if [ "$eng" = "$ENGINE" ] && [ "$id" = "$STRATEGY" ]; then
+			printf '%s' "$args"
+			return 0
+		fi
+	done < "$STRATEGY_FILE"
+	return 1
+}
+
+# Motor ikilisini sırayla arar: kendi derlediğimiz kopya, kendi kaynak
+# ağacımız, sistemde zaten kurulu upstream zapret/zapret2.
+engine_bin() {
+	local candidates=()
+	case "$ENGINE" in
+	zapret2)
+		candidates=(
+			"$ENGINE_DIR/zapret2/nfqws2"
+			"$SRC_DIR/zapret2/nfq2/nfqws2"
+			"/opt/zapret2/nfq2/nfqws2"
+			"/opt/zapret2/binaries/my/nfqws2"
+		) ;;
+	zapret)
+		candidates=(
+			"$ENGINE_DIR/zapret/nfqws"
+			"$SRC_DIR/zapret/nfq/nfqws"
+			"/opt/zapret/nfq/nfqws"
+			"/opt/zapret/binaries/my/nfqws"
+		) ;;
+	*) die "geçersiz motor: $ENGINE" ;;
+	esac
+	local c
+	for c in "${candidates[@]}"; do
+		if [ -x "$c" ]; then printf '%s' "$c"; return 0; fi
+	done
+	printf '%s' "${candidates[0]}"
+}
+
+# zapret2 LUA kütüphanelerinin bulunduğu dizin
+lua_dir() {
+	local c
+	for c in "$ENGINE_DIR/zapret2/lua" "$SRC_DIR/zapret2/lua" "/opt/zapret2/lua"; do
+		if [ -r "$c/zapret-lib.lua" ]; then printf '%s' "$c"; return 0; fi
+	done
+	printf '%s' "$ENGINE_DIR/zapret2/lua"
+}
+
+# =====================================================================
+# nftables kuralları
+# =====================================================================
+
+detect_wan() {
+	ip -4 route show default 2>/dev/null | awk '/dev/ {for(i=1;i<=NF;i++) if($i=="dev") {print $(i+1); exit}}'
+}
+
+nft_ruleset() {
+	# Kuyruk kuralları postrouting'e yazılır: hem yerel çıkış (output) hem de
+	# ağ geçidi modundaki yönlendirilen (forward) trafiği tek yerde yakalar.
+	local fam="ip"
+	[ "$ENABLE_IPV6" = "1" ] && fam="inet"
+
+	printf 'table %s %s {\n' "$fam" "$NFT_TABLE"
+	printf '\tchain postrouting {\n'
+	printf '\t\ttype filter hook postrouting priority 99; policy accept;\n'
+	if [ -n "$PORTS_TCP" ]; then
+		printf '\t\tmark and %s == 0 meta l4proto tcp tcp dport { %s } ct original packets 1-8 queue num %s bypass\n' \
+			"$DESYNC_MARK" "$PORTS_TCP" "$QNUM"
+	fi
+	if [ -n "$PORTS_UDP" ]; then
+		printf '\t\tmark and %s == 0 meta l4proto udp udp dport { %s } ct original packets 1-8 queue num %s bypass\n' \
+			"$DESYNC_MARK" "$PORTS_UDP" "$QNUM"
+	fi
+	printf '\t}\n'
+
+	if [ "$GATEWAY_MODE" = "1" ]; then
+		local wan="$WAN_IFACE"
+		[ -n "$wan" ] || wan="$(detect_wan)"
+		[ -n "$wan" ] || die "ağ geçidi modu için WAN arayüzü tespit edilemedi, WAN_IFACE ayarlayın"
+		printf '\tchain forward {\n'
+		printf '\t\ttype filter hook forward priority filter; policy accept;\n'
+		printf '\t\tct state established,related accept\n'
+		printf '\t\toifname "%s" accept\n' "$wan"
+		printf '\t}\n'
+		printf '\tchain nat_postrouting {\n'
+		printf '\t\ttype nat hook postrouting priority srcnat; policy accept;\n'
+		printf '\t\toifname "%s" masquerade\n' "$wan"
+		printf '\t}\n'
+	fi
+	printf '}\n'
+}
+
+cmd_nft_apply() {
+	need_root
+	load_config
+	modprobe nfnetlink_queue 2>/dev/null || true
+	modprobe nft_queue 2>/dev/null || true
+	cmd_nft_flush
+	nft_ruleset | nft -f - || die "nftables kuralları uygulanamadı"
+	if [ "$GATEWAY_MODE" = "1" ]; then
+		sysctl -qw net.ipv4.ip_forward=1
+		# Aynı arayüzden yönlendirmede ICMP redirect istemciyi yönlendiriciyi
+		# atlamaya ikna eder; kapatıyoruz.
+		sysctl -qw net.ipv4.conf.all.send_redirects=0
+		if [ "$ENABLE_IPV6" = "1" ]; then
+			sysctl -qw net.ipv6.conf.all.forwarding=1
+		fi
+	fi
+	return 0
+}
+
+cmd_nft_flush() {
+	need_root
+	nft delete table ip "$NFT_TABLE" 2>/dev/null || true
+	nft delete table inet "$NFT_TABLE" 2>/dev/null || true
+}
+
+# =====================================================================
+# Motorun çalıştırılması (systemd ExecStart bunu çağırır)
+# =====================================================================
+
+build_engine_cmd() {
+	# Motor komutunu ENGINE_CMD dizisine kurar.
+	local bin; bin="$(engine_bin)"
+	[ -x "$bin" ] || die "motor bulunamadı: $bin  (önce: zapret-turkeyctl build)"
+
+	local sargs
+	sargs="$(strategy_args)" || die "strateji bulunamadı: $ENGINE/$STRATEGY"
+	[ -n "$sargs" ] || die "strateji boş. 'analiz' seçiliyse önce blockcheck çalıştırın."
+
+	local args=()
+
+	# LUA motorunda kütüphaneler desync tanımlarından önce yüklenmeli
+	if [ "$ENGINE" = "zapret2" ]; then
+		local luadir; luadir="$(lua_dir)"
+		local f
+		for f in zapret-lib zapret-antidpi zapret-auto; do
+			if [ -r "$luadir/$f.lua" ]; then
+				args+=("--lua-init=@$luadir/$f.lua")
+			fi
+		done
+		args+=("--fwmark=$DESYNC_MARK")
+	else
+		args+=("--dpi-desync-fwmark=$DESYNC_MARK")
+	fi
+
+	args+=("--qnum=$QNUM")
+	[ -n "$PORTS_TCP" ] && args+=("--filter-tcp=$PORTS_TCP")
+	[ -n "$PORTS_UDP" ] && args+=("--filter-udp=$PORTS_UDP")
+
+	[ -s "$ZT_ETC/excludelist.txt" ] && args+=("--hostlist-exclude=$ZT_ETC/excludelist.txt")
+
+	case "$HOSTLIST_MODE" in
+	auto)
+		touch "$ZT_ETC/autohostlist.txt" 2>/dev/null || true
+		args+=("--hostlist-auto=$ZT_ETC/autohostlist.txt")
+		;;
+	manual)
+		[ -s "$ZT_ETC/hostlist.txt" ] || die "hostlist.txt boş: $ZT_ETC/hostlist.txt"
+		args+=("--hostlist=$ZT_ETC/hostlist.txt")
+		;;
+	off) ;;
+	*) die "geçersiz HOSTLIST_MODE: $HOSTLIST_MODE" ;;
+	esac
+
+	# strateji argümanlarını kelimelere ayır
+	local sarr=()
+	read -ra sarr <<< "$sargs"
+	args+=("${sarr[@]}")
+
+	ENGINE_CMD=("$bin" "${args[@]}")
+}
+
+cmd_run_engine() {
+	need_root
+	load_config
+	build_engine_cmd
+	exec "${ENGINE_CMD[@]}"
+}
+
+# Hata ayıklama: çalıştırılacak komutu ve nftables kurallarını gösterir
+cmd_print_cmd() {
+	load_config
+	build_engine_cmd
+	printf '%q ' "${ENGINE_CMD[@]}"
+	printf '\n'
+}
+
+cmd_print_nft() {
+	load_config
+	nft_ruleset
+}
+
+# =====================================================================
+# Servis yönetimi
+# =====================================================================
+
+# start/restart/enable, kendilerinden önce uygulanacak KEY=VALUE çiftleri
+# alabilir. Böylece arayüz "ayarı kaydet + başlat" işlemini tek bir
+# yetki yükseltmesiyle yapar.
+cmd_start() {
+	need_root
+	[ $# -gt 0 ] && cmd_config set "$@"
+	conflict_guard
+	systemctl start "$UNIT"
+}
+cmd_restart() {
+	need_root
+	[ $# -gt 0 ] && cmd_config set "$@"
+	systemctl restart "$UNIT"
+}
+cmd_enable() {
+	need_root
+	[ $# -gt 0 ] && cmd_config set "$@"
+	conflict_guard
+	systemctl enable --now "$UNIT"
+}
+cmd_stop()    { need_root; systemctl stop "$UNIT"; cmd_nft_flush; }
+cmd_disable() { need_root; systemctl disable --now "$UNIT" 2>/dev/null || true; cmd_nft_flush; }
+
+conflict_guard() {
+	# Aynı anda çalışan başka bir DPI atlatma aracı kuyruğu bozar
+	local p
+	for p in $(pgrep -x 'nfqws|nfqws2|tpws|ciadpi|byedpi' 2>/dev/null || true); do
+		# kendi servisimizin süreci değilse uyar
+		if ! grep -qs "$UNIT" "/proc/$p/cgroup" 2>/dev/null; then
+			warn "çakışan süreç çalışıyor: PID $p ($(cat "/proc/$p/comm" 2>/dev/null))"
+		fi
+	done
+	if systemctl is-active --quiet zapret.service 2>/dev/null; then
+		warn "upstream zapret.service aktif; NFQUEUE kuralları çakışabilir"
+	fi
+}
+
+cmd_status() {
+	load_config
+	local running=0 enabled=0 pid=0
+	systemctl is-active --quiet "$UNIT" && running=1
+	systemctl is-enabled --quiet "$UNIT" 2>/dev/null && enabled=1
+	pid="$(systemctl show -p MainPID --value "$UNIT" 2>/dev/null || echo 0)"
+	local nft_ok=0
+	nft list table ip "$NFT_TABLE" >/dev/null 2>&1 && nft_ok=1
+	nft list table inet "$NFT_TABLE" >/dev/null 2>&1 && nft_ok=1
+
+	printf 'version=%s\nengine=%s\nstrategy=%s\nhostlist=%s\ngateway=%s\nrunning=%s\nenabled=%s\npid=%s\nnft=%s\nengine_ready=%s\n' \
+		"$VERSION" "$ENGINE" "$STRATEGY" "$HOSTLIST_MODE" "$GATEWAY_MODE" \
+		"$running" "$enabled" "${pid:-0}" "$nft_ok" \
+		"$([ -x "$(engine_bin)" ] && echo 1 || echo 0)"
+}
+
+# =====================================================================
+# Şifreli DNS (YogaDNS karşılığı)
+#
+# İki arka uç:
+#   resolved : systemd-resolved ile DNS-over-TLS (853/tcp). Ek paket
+#              gerektirmez, ama bazı ISS'ler 853'ü kapatır.
+#   dnscrypt : dnscrypt-proxy ile DNS-over-HTTPS (443/tcp). Trafik normal
+#              HTTPS'ten ayırt edilemez; dnscrypt-proxy kurulu olmalı.
+#              resolved, upstream olarak 127.0.0.1:5300'e yönlendirilir.
+# =====================================================================
+
+RESOLVED_DROPIN="/etc/systemd/resolved.conf.d/90-zapret-turkey.conf"
+DNSCRYPT_CONF="/etc/dnscrypt-proxy/dnscrypt-proxy.toml"
+DNSCRYPT_BAK="/etc/dnscrypt-proxy/dnscrypt-proxy.toml.zapret-turkey.bak"
+DNSCRYPT_PORT="5300"
+
+dns_provider_dot() {
+	case "$1" in
+	google) printf '8.8.8.8#dns.google 8.8.4.4#dns.google' ;;
+	quad9)  printf '9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net' ;;
+	*)      printf '1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com' ;;
+	esac
+}
+
+dns_provider_doh() {
+	case "$1" in
+	google) printf 'google' ;;
+	quad9)  printf 'quad9-doh-ip4-port443-filter-pri' ;;
+	*)      printf 'cloudflare' ;;
+	esac
+}
+
+dns_backend_auto() {
+	if command -v dnscrypt-proxy >/dev/null 2>&1; then
+		printf 'dnscrypt'
+	else
+		printf 'resolved'
+	fi
+}
+
+dns_port_reachable() {
+	timeout 3 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null
+}
+
+cmd_dns() {
+	local action="${1:-status}"; shift || true
+	case "$action" in
+	status)  dns_status "${1:-}" ;;
+	enable)  dns_enable "$@" ;;
+	disable) dns_disable ;;
+	test)    dns_test ;;
+	*) die "kullanım: dns {status|enable [sağlayıcı] [arka-uç]|disable|test}" ;;
+	esac
+}
+
+# dns_status [--probe]
+# --probe verilmezse 853/tcp erişilebilirlik testi atlanır (arayüz durum
+# yenilemesini yavaşlatmasın diye).
+dns_status() {
+	local probe="${1:-}"
+	local backend="none" encrypted=0 servers="" provider="" dot="?"
+
+	if [ -f "$RESOLVED_DROPIN" ]; then
+		provider="$(sed -n 's/^# zapret-turkey-provider=//p' "$RESOLVED_DROPIN")"
+		if grep -q "127.0.0.1:$DNSCRYPT_PORT" "$RESOLVED_DROPIN"; then
+			backend="dnscrypt"
+		else
+			backend="resolved"
+		fi
+		encrypted=1
+	fi
+	if [ "$backend" = "dnscrypt" ] && ! systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
+		encrypted=0
+	fi
+	if [ "$backend" = "resolved" ] && ! resolvectl status 2>/dev/null | grep -q '+DNSOverTLS'; then
+		encrypted=0
+	fi
+
+	servers="$(resolvectl status 2>/dev/null | sed -n 's/^ *Current DNS Server: //p' | tr '\n' ' ')"
+	[ -n "$servers" ] || servers="$(awk '/^nameserver/ {printf "%s ", $2}' /etc/resolv.conf 2>/dev/null)"
+
+	if [ "$probe" = "--probe" ]; then
+		dot="$(dns_port_reachable 1.1.1.1 853 && echo 1 || echo 0)"
+	fi
+
+	printf 'backend=%s\nprovider=%s\nencrypted=%s\nservers=%s\nresolved=%s\ndnscrypt_available=%s\ndot_port_open=%s\n' \
+		"$backend" "${provider:-}" "$encrypted" "$servers" \
+		"$(systemctl is-active systemd-resolved 2>/dev/null || echo inactive)" \
+		"$(command -v dnscrypt-proxy >/dev/null 2>&1 && echo 1 || echo 0)" \
+		"$dot"
+}
+
+dns_enable() {
+	need_root
+	local provider="${1:-cloudflare}"
+	local backend="${2:-auto}"
+	case "$provider" in cloudflare|google|quad9) ;; *) die "sağlayıcı: cloudflare|google|quad9" ;; esac
+	[ "$backend" = "auto" ] && backend="$(dns_backend_auto)"
+
+	systemctl is-active --quiet systemd-resolved 2>/dev/null || {
+		info "systemd-resolved etkinleştiriliyor"
+		systemctl enable --now systemd-resolved
+	}
+
+	case "$backend" in
+	resolved)
+		if ! dns_port_reachable 1.1.1.1 853; then
+			warn "853/tcp (DoT) kapalı görünüyor; ISS engelliyor olabilir."
+			warn "dnscrypt-proxy kurup 'dns enable $provider dnscrypt' ile DoH deneyin."
+		fi
+		mkdir -p "$(dirname "$RESOLVED_DROPIN")"
+		{
+			printf '# zapret-turkey tarafından oluşturuldu - elle düzenlemeyin\n'
+			printf '# zapret-turkey-provider=%s\n' "$provider"
+			printf '[Resolve]\n'
+			printf 'DNS=%s\n' "$(dns_provider_dot "$provider")"
+			printf 'DNSOverTLS=yes\n'
+			printf 'DNSSEC=allow-downgrade\n'
+			printf 'Cache=yes\n'
+			# ~. : bağlantıdan (DHCP) gelen ISS sunucuları yerine bunlar kullanılır.
+			# Kendi arama alanı olan bağlantılar (VPN, Tailscale) etkilenmez.
+			printf 'Domains=~.\n'
+		} > "$RESOLVED_DROPIN"
+		;;
+	dnscrypt)
+		command -v dnscrypt-proxy >/dev/null 2>&1 || die "dnscrypt-proxy kurulu değil (pacman -S dnscrypt-proxy)"
+		dnscrypt_write_config "$provider"
+		systemctl enable --now dnscrypt-proxy
+		mkdir -p "$(dirname "$RESOLVED_DROPIN")"
+		{
+			printf '# zapret-turkey tarafından oluşturuldu - elle düzenlemeyin\n'
+			printf '# zapret-turkey-provider=%s\n' "$provider"
+			printf '[Resolve]\n'
+			printf 'DNS=127.0.0.1:%s\n' "$DNSCRYPT_PORT"
+			printf 'DNSOverTLS=no\n'
+			printf 'DNSSEC=no\n'
+			printf 'Cache=no\n'
+			printf 'Domains=~.\n'
+		} > "$RESOLVED_DROPIN"
+		;;
+	*) die "arka uç: resolved|dnscrypt|auto" ;;
+	esac
+
+	chmod 0644 "$RESOLVED_DROPIN"
+	systemctl restart systemd-resolved
+	resolvectl flush-caches 2>/dev/null || true
+	info "şifreli DNS açık (arka uç: $backend, sağlayıcı: $provider)"
+	dns_test
+}
+
+dnscrypt_write_config() {
+	local provider="$1"
+	local server; server="$(dns_provider_doh "$provider")"
+
+	if [ -f "$DNSCRYPT_CONF" ] && ! grep -q 'zapret-turkey' "$DNSCRYPT_CONF"; then
+		info "mevcut dnscrypt-proxy yapılandırması yedekleniyor: $DNSCRYPT_BAK"
+		cp -n "$DNSCRYPT_CONF" "$DNSCRYPT_BAK"
+	fi
+
+	mkdir -p "$(dirname "$DNSCRYPT_CONF")" /var/cache/dnscrypt-proxy
+	cat > "$DNSCRYPT_CONF" <<EOF
+# zapret-turkey tarafından oluşturuldu.
+# Önceki yapılandırma (varsa): $DNSCRYPT_BAK
+# DNS sorguları 443/tcp üzerinden DoH ile taşınır; normal HTTPS trafiğinden
+# ayırt edilemez.
+listen_addresses = ['127.0.0.1:$DNSCRYPT_PORT']
+server_names = ['$server']
+doh_servers = true
+odoh_servers = false
+dnscrypt_servers = false
+ipv4_servers = true
+ipv6_servers = false
+require_dnssec = false
+require_nolog = true
+require_nofilter = true
+timeout = 3000
+keepalive = 30
+cache = true
+cache_size = 4096
+cache_min_ttl = 2400
+cache_max_ttl = 86400
+bootstrap_resolvers = ['9.9.9.9:53', '8.8.8.8:53']
+ignore_system_dns = true
+netprobe_timeout = 60
+netprobe_address = '9.9.9.9:53'
+
+[sources]
+  [sources.'public-resolvers']
+  urls = ['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md', 'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md']
+  cache_file = '/var/cache/dnscrypt-proxy/public-resolvers.md'
+  minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  refresh_delay = 72
+EOF
+	chmod 0644 "$DNSCRYPT_CONF"
+}
+
+dns_disable() {
+	need_root
+	if [ -f "$RESOLVED_DROPIN" ]; then
+		rm -f "$RESOLVED_DROPIN"
+		systemctl restart systemd-resolved 2>/dev/null || true
+		resolvectl flush-caches 2>/dev/null || true
+	fi
+	if systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
+		systemctl disable --now dnscrypt-proxy
+	fi
+	if [ -f "$DNSCRYPT_BAK" ]; then
+		info "önceki dnscrypt-proxy yapılandırması geri yükleniyor"
+		mv -f "$DNSCRYPT_BAK" "$DNSCRYPT_CONF"
+	fi
+	info "şifreli DNS kapatıldı, sistem varsayılanlarına dönüldü"
+}
+
+dns_test() {
+	local st; st="$(dns_status --probe)"
+	local backend encrypted
+	backend="$(printf '%s' "$st" | sed -n 's/^backend=//p')"
+	encrypted="$(printf '%s' "$st" | sed -n 's/^encrypted=//p')"
+
+	printf '%s\n' "$st"
+
+	# Şifreli kanal gerçekten çözümleme yapıyor mu?
+	local ans=""
+	if command -v resolvectl >/dev/null 2>&1; then
+		ans="$(resolvectl query --legend=no example.com 2>/dev/null | awk 'NR==1{print $2}')"
+	fi
+	[ -n "$ans" ] || ans="$(getent ahostsv4 example.com 2>/dev/null | awk 'NR==1{print $1}')"
+	printf 'resolve_test=%s\n' "${ans:-fail}"
+
+	# ISS müdahalesi hâlâ var mı?
+	cmd_dnscheck | sed -n 's/^result=/poisoning=/p'
+
+	if [ "$backend" != "none" ] && [ "$encrypted" != "1" ]; then
+		warn "şifreli DNS yapılandırıldı ama etkin görünmüyor; 'journalctl -u systemd-resolved -n 30'"
+	fi
+	return 0
+}
+
+# =====================================================================
+# Teşhis
+# =====================================================================
+
+cmd_dnscheck() {
+	# ISS DNS'e müdahale ediyor mu? Sistem çözümleyicisi ile 1.1.1.1
+	# yanıtlarını karşılaştırırız; kesişim yoksa müdahale var demektir.
+	local dom="${1:-updates.discord.com}"
+	local sys ref
+
+	if command -v dig >/dev/null 2>&1; then
+		sys="$(dig +short +time=3 +tries=1 "$dom" A 2>/dev/null | grep -E '^[0-9.]+$' || true)"
+		ref="$(dig +short +time=3 +tries=1 @1.1.1.1 "$dom" A 2>/dev/null | grep -E '^[0-9.]+$' || true)"
+	else
+		sys="$(getent ahostsv4 "$dom" 2>/dev/null | awk '{print $1}' | sort -u || true)"
+		ref=""
+	fi
+
+	printf 'domain=%s\nsystem=%s\nreference=%s\n' "$dom" "$(echo "$sys" | tr '\n' ' ')" "$(echo "$ref" | tr '\n' ' ')"
+
+	if [ -z "$sys" ]; then
+		printf 'result=fail\nreason=%s\n' "sistem DNS yanıt vermedi"; return 0
+	fi
+	if [ -z "$ref" ]; then
+		printf 'result=unknown\nreason=%s\n' "referans DNS'e ulaşılamadı"; return 0
+	fi
+	local a b
+	for a in $sys; do
+		for b in $ref; do
+			[ "$a" = "$b" ] && { printf 'result=ok\n'; return 0; }
+		done
+	done
+	printf 'result=poisoned\nreason=%s\n' "sistem DNS yanıtı referanstan farklı"
+}
+
+cmd_doctor() {
+	load_config
+	local fail=0
+	check() { # ad, durum(0/1), açıklama
+		# printf %-28s bayt sayar; Türkçe karakterlerde hizayı bozmamak için
+		# dolguyu karakter sayısına göre kendimiz hesaplıyoruz.
+		local pad=$((28 - ${#1}))
+		[ "$pad" -lt 1 ] && pad=1
+		printf '%s%*s%s%s\n' "$1" "$pad" "" \
+			"$([ "$2" = 0 ] && echo 'TAMAM' || echo 'SORUN')" "${3:+  -- $3}"
+		[ "$2" = 0 ] || fail=1
+	}
+
+	command -v nft >/dev/null && check "nftables" 0 || check "nftables" 1 "nftables paketini kurun"
+	[ -x "$(engine_bin)" ] && check "motor ($ENGINE)" 0 || check "motor ($ENGINE)" 1 "zapret-turkeyctl build"
+	if lsmod 2>/dev/null | grep -q nfnetlink_queue || modinfo nfnetlink_queue >/dev/null 2>&1; then
+		check "nfnetlink_queue" 0
+	else
+		check "nfnetlink_queue" 1 "çekirdek modülü yok"
+	fi
+	systemctl list-unit-files "$UNIT" >/dev/null 2>&1 && check "systemd birimi" 0 || check "systemd birimi" 1 "install.sh çalıştırın"
+
+	# aynı kuyruk numarasını kullanan başka kural var mı
+	if nft -a list ruleset 2>/dev/null | grep -q "queue.*num $QNUM" ; then
+		if nft list table ip "$NFT_TABLE" >/dev/null 2>&1 || nft list table inet "$NFT_TABLE" >/dev/null 2>&1; then
+			check "kuyruk $QNUM" 0 "bize ait"
+		else
+			check "kuyruk $QNUM" 1 "başka bir tablo aynı kuyruğu kullanıyor"
+		fi
+	else
+		check "kuyruk $QNUM" 0 "boşta"
+	fi
+
+	local p others=""
+	for p in $(pgrep -x 'nfqws|nfqws2|tpws|ciadpi|byedpi' 2>/dev/null || true); do
+		grep -qs "$UNIT" "/proc/$p/cgroup" 2>/dev/null || others="$others $(cat "/proc/$p/comm" 2>/dev/null)($p)"
+	done
+	[ -z "$others" ] && check "çakışan süreç" 0 || check "çakışan süreç" 1 "$others"
+
+	if command -v sing-box >/dev/null 2>&1 && pgrep -x sing-box >/dev/null 2>&1; then
+		check "TUN çakışması" 1 "sing-box çalışıyor"
+	else
+		check "TUN çakışması" 0
+	fi
+
+	local dns; dns="$(cmd_dnscheck | sed -n 's/^result=//p')"
+	[ "$dns" = "ok" ] && check "DNS müdahalesi" 0 || check "DNS müdahalesi" 1 "sonuç: $dns"
+
+	local enc; enc="$(dns_status | sed -n 's/^encrypted=//p')"
+	[ "$enc" = "1" ] && check "şifreli DNS" 0 "$(dns_status | sed -n 's/^backend=//p')" \
+		|| check "şifreli DNS" 1 "kapalı  --  'zapret-turkeyctl dns enable' ile açın"
+
+	return $fail
+}
+
+# =====================================================================
+# Motorların derlenmesi
+# =====================================================================
+
+cmd_build() {
+	need_root
+	local which="${1:-all}"
+	command -v git >/dev/null || die "git gerekli"
+	command -v make >/dev/null || die "make gerekli"
+	command -v cc >/dev/null || command -v gcc >/dev/null || die "C derleyicisi gerekli"
+
+	mkdir -p "$SRC_DIR" "$ENGINE_DIR"
+
+	build_one() {
+		local name="$1" repo="$2" nfqdir="$3" binname="$4"
+		info "$name kaynak kodu alınıyor"
+		if [ -d "$SRC_DIR/$name/.git" ]; then
+			git -C "$SRC_DIR/$name" fetch --depth 1 origin master
+			git -C "$SRC_DIR/$name" reset --hard origin/master
+		else
+			rm -rf "${SRC_DIR:?}/$name"
+			git clone --depth 1 "$repo" "$SRC_DIR/$name"
+		fi
+		info "$name derleniyor"
+		make -C "$SRC_DIR/$name/$nfqdir" >/dev/null
+		make -C "$SRC_DIR/$name/mdig" >/dev/null || warn "mdig derlenemedi (blockcheck için gerekli)"
+		mkdir -p "$ENGINE_DIR/$name"
+		install -m 0755 "$SRC_DIR/$name/$nfqdir/$binname" "$ENGINE_DIR/$name/$binname"
+		if [ -d "$SRC_DIR/$name/lua" ]; then
+			rm -rf "$ENGINE_DIR/$name/lua"
+			cp -r "$SRC_DIR/$name/lua" "$ENGINE_DIR/$name/lua"
+		fi
+		info "$name hazır: $ENGINE_DIR/$name/$binname"
+		return 0
+	}
+
+	case "$which" in
+	zapret2) build_one zapret2 https://github.com/bol-van/zapret2 nfq2 nfqws2 ;;
+	zapret)  build_one zapret  https://github.com/bol-van/zapret  nfq  nfqws  ;;
+	all)
+		build_one zapret2 https://github.com/bol-van/zapret2 nfq2 nfqws2
+		build_one zapret  https://github.com/bol-van/zapret  nfq  nfqws
+		;;
+	*) die "kullanım: build [zapret2|zapret|all]" ;;
+	esac
+}
+
+# =====================================================================
+# Blockcheck
+# =====================================================================
+
+cmd_blockcheck() {
+	need_root
+	load_config
+	local eng="${1:-$ENGINE}"
+	local base script log
+	mkdir -p "$ZT_LOG"
+
+	case "$eng" in
+	zapret2)
+		script="blockcheck2.sh"; log="$ZT_LOG/blockcheck2.log"
+		for base in "$SRC_DIR/zapret2" "/opt/zapret2"; do
+			[ -f "$base/$script" ] && break
+		done ;;
+	zapret)
+		script="blockcheck.sh"; log="$ZT_LOG/blockcheck.log"
+		for base in "$SRC_DIR/zapret" "/opt/zapret"; do
+			[ -f "$base/$script" ] && break
+		done ;;
+	*) die "geçersiz motor: $eng" ;;
+	esac
+	[ -f "$base/$script" ] || die "blockcheck bulunamadı, önce: zapret-turkeyctl build $eng"
+
+	# Çalışan motor blockcheck sonucunu bozar
+	systemctl is-active --quiet "$UNIT" && { info "motor geçici olarak durduruluyor"; systemctl stop "$UNIT"; cmd_nft_flush; }
+
+	local domains="${DOMAINS:-discord.com roblox.com}"
+	info "blockcheck başlıyor ($eng): $domains  --  log: $log"
+
+	env BATCH=1 \
+		ZAPRET_BASE="$base" \
+		ZAPRET_RW="$ZT_LOG" \
+		DOMAINS="$domains" \
+		IPVS=4 \
+		ENABLE_HTTP="${ENABLE_HTTP:-0}" \
+		ENABLE_HTTPS_TLS12="${ENABLE_HTTPS_TLS12:-1}" \
+		ENABLE_HTTPS_TLS13="${ENABLE_HTTPS_TLS13:-1}" \
+		ENABLE_HTTP3="${ENABLE_HTTP3:-0}" \
+		REPEATS="${REPEATS:-1}" \
+		SCANLEVEL="${SCANLEVEL:-standard}" \
+		bash "$base/$script" 2>&1 | tee "$log"
+
+	local found
+	found="$(parse_blockcheck "$log" "$eng" || true)"
+	if [ -n "$found" ]; then
+		info "bulunan strateji: $found"
+		cmd_config set "CUSTOM_ARGS=$found" "STRATEGY=analiz" "ENGINE=$eng"
+		info "config güncellendi (STRATEGY=analiz)"
+	else
+		warn "logdan çalışan bir strateji çıkarılamadı, $log dosyasına bakın"
+	fi
+}
+
+# Blockcheck çıktısındaki son "!!!!! AVAILABLE !!!!!" satırından
+# nfqws argümanlarını çıkarır.
+parse_blockcheck() {
+	local log="$1" eng="$2"
+	local pat='nfqws'
+	[ "$eng" = "zapret2" ] && pat='nfqws2'
+	# "!!!!! AVAILABLE !!!!!" satırından önce gelen son nfqws parametre satırı
+	awk -v pat="$pat" '
+		index($0, pat) { last = $0 }
+		/AVAILABLE/    { hit = last }
+		END { if (hit != "") print hit }
+	' "$log" 2>/dev/null |
+	sed -E "s/.*${pat}[^ ]*[[:space:]]+//" |
+	sed -E 's/--qnum=[^ ]*//g; s/--filter-(tcp|udp)=[^ ]*//g; s/--hostlist[^ ]*//g; s/--daemon//g; s/--pidfile=[^ ]*//g; s/^[[:space:]]+//; s/[[:space:]]+$//'
+}
+
+# =====================================================================
+# Ağ geçidi bilgisi
+# =====================================================================
+
+cmd_gateway_info() {
+	load_config
+	local wan lan ip
+	wan="${WAN_IFACE:-$(detect_wan)}"
+	ip="$(ip -4 -o addr show scope global 2>/dev/null | awk -v w="$wan" '$2==w {split($4,a,"/"); print a[1]; exit}')"
+	lan="$(ip -4 -o addr show scope global 2>/dev/null |
+		awk -v w="$wan" '$2!=w && $2 !~ /^(lo|docker|virbr|veth|br-|tailscale|wg|tun|tap|zt|podman)/ {split($4,a,"/"); print $2" "a[1]; exit}')"
+	# Tek NIC'li kurulumda LAN ve WAN aynı arayüzdir; istemcilerin ağ geçidi
+	# olarak gireceği adres bu makinenin o ağdaki IP'sidir.
+	[ -n "$lan" ] || lan="$wan $ip"
+	printf 'wan_iface=%s\nwan_ip=%s\nlan=%s\nenabled=%s\n' "$wan" "$ip" "$lan" "$GATEWAY_MODE"
+}
+
+# =====================================================================
+
+usage() {
+	cat <<EOF
+zapret-turkeyctl $VERSION
+
+Kullanım: zapret-turkeyctl <komut> [argüman]
+
+  status                    durum bilgisi (key=value)
+  strategies [motor]        hazır strateji listesi
+  config get [ANAHTAR...]   ayarları göster
+  config set K=V ...        ayar değiştir            (root)
+  start|restart [K=V...]    motoru çalıştır          (root)
+  stop                      motoru durdur            (root)
+  enable [K=V...]           açılışta otomatik başlat (root)
+  disable                   otomatik başlatmayı kapat(root)
+  build [zapret2|zapret]    motorları derle          (root)
+  blockcheck [motor]        ISS analizi yap          (root)
+  dnscheck [domain]         DNS müdahalesi kontrolü
+  dns status [--probe]      şifreli DNS durumu
+  dns test                  şifreli DNS'i sına
+  dns enable [sağlayıcı] [arka-uç]   DoT/DoH aç      (root)
+  dns disable               şifreli DNS'i kapat      (root)
+  doctor                    çakışma/ortam teşhisi
+  gateway-info              ağ geçidi modu bilgisi
+  nft-apply | nft-flush     kuralları uygula/temizle (root)
+  run-engine                motoru ön planda çalıştır (systemd kullanır)
+  print-cmd | print-nft     üretilecek komutu/kuralları göster
+EOF
+}
+
+main() {
+	local cmd="${1:-}"; shift || true
+	case "$cmd" in
+	status)       cmd_status "$@" ;;
+	strategies)   cmd_strategies "$@" ;;
+	config)       cmd_config "$@" ;;
+	start)        cmd_start "$@" ;;
+	stop)         cmd_stop ;;
+	restart)      cmd_restart "$@" ;;
+	enable)       cmd_enable "$@" ;;
+	disable)      cmd_disable ;;
+	build)        cmd_build "$@" ;;
+	blockcheck)   cmd_blockcheck "$@" ;;
+	dnscheck)     cmd_dnscheck "$@" ;;
+	dns)          cmd_dns "$@" ;;
+	doctor)       cmd_doctor ;;
+	gateway-info) cmd_gateway_info ;;
+	nft-apply)    cmd_nft_apply ;;
+	print-cmd)    cmd_print_cmd ;;
+	print-nft)    cmd_print_nft ;;
+	nft-flush)    cmd_nft_flush ;;
+	run-engine)   cmd_run_engine ;;
+	version|--version) printf '%s\n' "$VERSION" ;;
+	help|--help|-h|"") usage ;;
+	*) die "bilinmeyen komut: $cmd (yardım: zapret-turkeyctl help)" ;;
+	esac
+}
+
+main "$@"

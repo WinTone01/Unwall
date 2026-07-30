@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Zapret Türkiye
+GenericName=DPI Bypass
+Comment=DPI tabanlı engelleri atlatmak için zapret kontrol paneli
+Exec=zapret-turkey
+Icon=network-transmit-receive
+Terminal=false
+Categories=Network;Security;GTK;
+Keywords=zapret;dpi;discord;roblox;sansür;bypass;
+StartupNotify=true
