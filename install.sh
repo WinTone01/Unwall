@@ -43,7 +43,20 @@ for arg in "$@"; do
 	esac
 done
 
-[ "$(id -u)" -eq 0 ] || { echo "root olarak çalıştırın: sudo ./install.sh" >&2; exit 1; }
+# Tek yetki istemi: root değilsek kendimizi bir kez yükseltip aynı
+# argümanlarla yeniden çalışıyoruz. Böylece parola bir defa sorulur ve
+# bütün adımlar aynı root oturumunda koşar.
+if [ "$(id -u)" -ne 0 ]; then
+	SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+	if command -v sudo >/dev/null 2>&1; then
+		echo "Yönetici yetkisi gerekiyor, parola bir kez sorulacak."
+		exec sudo -- "$SELF" "$@"
+	elif command -v pkexec >/dev/null 2>&1; then
+		exec pkexec "$SELF" "$@"
+	fi
+	echo "root olarak çalıştırın: sudo $0 $*" >&2
+	exit 1
+fi
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 note() { printf '    %s\n' "$*"; }

@@ -34,7 +34,20 @@ for arg in "$@"; do
 	esac
 done
 
-[ "$(id -u)" -eq 0 ] || { echo "root olarak çalıştırın: sudo ./uninstall.sh" >&2; exit 1; }
+# Tek yetki istemi: root değilsek kendimizi bir kez yükseltip aynı
+# argümanlarla yeniden çalışıyoruz. Böylece parola bir defa sorulur ve
+# bütün adımlar aynı root oturumunda koşar.
+if [ "$(id -u)" -ne 0 ]; then
+	SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+	if command -v sudo >/dev/null 2>&1; then
+		echo "Yönetici yetkisi gerekiyor, parola bir kez sorulacak."
+		exec sudo -- "$SELF" "$@"
+	elif command -v pkexec >/dev/null 2>&1; then
+		exec pkexec "$SELF" "$@"
+	fi
+	echo "root olarak çalıştırın: sudo $0 $*" >&2
+	exit 1
+fi
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
@@ -42,10 +55,6 @@ note() { printf '    %s\n' "$*"; }
 # Betik hem /usr/local hem /usr önekine kurulmuş olabilir (install.sh ve
 # PKGBUILD farklı yerlere koyar); ikisini de süpürüyoruz.
 PREFIXES="/usr/local /usr"
-CTL=""
-for p in $PREFIXES; do
-	[ -x "$p/bin/zapret-turkeyctl" ] && { CTL="$p/bin/zapret-turkeyctl"; break; }
-done
 
 # --- ne silineceğini göster ---
 step "kaldırılacaklar"
@@ -76,10 +85,7 @@ step "servis durduruluyor"
 systemctl disable --now zapret-turkey.service >/dev/null 2>&1 || true
 systemctl reset-failed zapret-turkey.service >/dev/null 2>&1 || true
 
-if [ -n "$CTL" ]; then
-	"$CTL" nft-flush >/dev/null 2>&1 || true
-fi
-# ctl silinmiş ya da bozuksa kuralları doğrudan kaldır
+# kuralları doğrudan kaldır (ctl'ye ihtiyaç yok, zaten root'uz)
 nft delete table ip zapret_turkey 2>/dev/null || true
 nft delete table inet zapret_turkey 2>/dev/null || true
 
@@ -91,10 +97,6 @@ done
 
 # --- 2. şifreli DNS ---
 step "şifreli DNS ayarları geri alınıyor"
-if [ -n "$CTL" ]; then
-	"$CTL" dns disable >/dev/null 2>&1 || true
-fi
-# ctl çalışmasa bile elle temizle
 if [ -f "$RESOLVED_DROPIN" ]; then
 	rm -f "$RESOLVED_DROPIN"
 	note "silindi: $RESOLVED_DROPIN"

@@ -43,10 +43,11 @@ systemd servisi, şifreli DNS ve GTK4 arayüzü ekler.
 ## Kurulum
 
 ```bash
-sudo ./install.sh
+./install.sh
 ```
 
-Bu tek komut her şeyi yapar:
+Betik kendini bir kez yükseltir (`sudo`, yoksa `pkexec`), yani parola yalnızca
+bir defa sorulur. Bu tek komut her şeyi yapar:
 
 1. Dağıtımınızı tanır (`pacman` / `apt` / `dnf` / `zypper`) ve **gerekli +
    isteğe bağlı tüm paketleri kurar** (`dnscrypt-proxy` dahil)
@@ -64,7 +65,8 @@ oradan ya da `zapret-turkey` komutuyla açabilirsiniz.
 
 Arch/CachyOS için paket olarak kurmak isterseniz: `cd packaging && makepkg -si`
 
-Her şeyi kaldırmak için: `sudo ./uninstall.sh`. Servisi durdurup devre dışı
+Her şeyi kaldırmak için: `./uninstall.sh` (parolayı o da yalnızca bir kez
+sorar). Servisi durdurup devre dışı
 bırakır, nftables kurallarını siler, şifreli DNS yapılandırmasını geri alır
 (değiştirdiği `dnscrypt-proxy.toml` varsa yedekten geri yükler), program
 dosyalarını, ayarları ve listeleri, derlenmiş motorları ve kaynak ağacını,

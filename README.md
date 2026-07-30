@@ -47,10 +47,11 @@ management, a systemd service, encrypted DNS and a GTK4 interface.
 ## Installation
 
 ```bash
-sudo ./install.sh
+./install.sh
 ```
 
-This single command:
+The script elevates itself once (through `sudo`, or `pkexec` when there is no
+`sudo`), so you are asked for your password a single time. This one command:
 
 1. Detects your package manager (`pacman` / `apt` / `dnf` / `zypper`) and
    **installs every required and optional package** (including `dnscrypt-proxy`)
@@ -68,7 +69,8 @@ category); launch it from there or with the `zapret-turkey` command.
 
 To install as an Arch/CachyOS package: `cd packaging && makepkg -si`
 
-To remove everything: `sudo ./uninstall.sh`. It stops and disables the service,
+To remove everything: `./uninstall.sh` (it also asks for the password only
+once). It stops and disables the service,
 drops the nftables rules, reverts the encrypted DNS configuration (restoring any
 `dnscrypt-proxy.toml` it replaced), deletes the program files, the settings and
 lists, the compiled engines and source tree, and the logs — then verifies that
