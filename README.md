@@ -34,46 +34,55 @@ systemd servisi ve GTK4 arayüzü ekler.
 
 ## Kurulum
 
-### Bağımlılıklar
-
-```bash
-sudo pacman -S --needed nftables python-gobject libadwaita gtk4 polkit bind base-devel git curl luajit libnetfilter_queue libnfnetlink libmnl zlib
-```
-
-<details>
-<summary>Debian / Ubuntu ve Fedora</summary>
-
-```bash
-sudo apt install nftables python3-gi gir1.2-adw-1 policykit-1 dnsutils build-essential git curl libluajit-5.1-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev zlib1g-dev
-```
-
-```bash
-sudo dnf install nftables python3-gobject libadwaita polkit bind-utils gcc make git curl luajit-devel libnetfilter_queue-devel libnfnetlink-devel libmnl-devel zlib-devel
-```
-
-</details>
-
-### Kurulum ve ilk çalıştırma
-
 ```bash
 sudo ./install.sh
 ```
 
-```bash
-sudo zapret-turkeyctl build
-```
+Bu tek komut her şeyi yapar:
+
+1. Dağıtımınızı tanır (`pacman` / `apt` / `dnf` / `zypper`) ve **gerekli +
+   isteğe bağlı tüm paketleri kurar** (`dnscrypt-proxy` dahil)
+2. Dosyaları, systemd birimini, polkit politikasını ve masaüstü girdisini yerleştirir
+3. Sistemde çakışan upstream `zapret.service` varsa devre dışı bırakmayı önerir
+4. `nfqws` ve `nfqws2` motorlarını kaynaktan derler
+5. Şifreli DNS'i açar (DoH varsa DoH, yoksa DoT)
+6. Servisi başlatıp açılışta otomatik başlatmaya alır
+7. `doctor` ile son durumu gösterir
+
+Adımlar sorulur; hepsine "evet" demek için `--yes` kullanın:
 
 ```bash
-zapret-turkey
+sudo ./install.sh --yes
 ```
 
-`build` komutu `bol-van/zapret` ve `bol-van/zapret2` depolarını
-`/opt/zapret-turkey/src` altına klonlayıp `nfqws` / `nfqws2` ikililerini derler.
-Yeniden çalıştırıldığında motorları günceller.
+Seçenekler: `--no-deps` (paket kurma), `--no-build` (derleme yok),
+`--no-dns` / `--dns=quad9`, `--no-autostart`, `PREFIX=/usr`.
 
 Arch/CachyOS için paket olarak kurmak isterseniz: `cd packaging && makepkg -si`
 
 Kaldırmak için: `sudo ./uninstall.sh` (ayarları da silmek için `--purge`).
+Kaldırma, şifreli DNS ayarlarını da geri alır.
+
+<details>
+<summary>Bağımlılıkları elle kurmak isterseniz</summary>
+
+```bash
+sudo pacman -S --needed nftables python-gobject libadwaita gtk4 polkit bind gcc make pkgconf git curl luajit libnetfilter_queue libnfnetlink libmnl zlib dnscrypt-proxy
+```
+
+```bash
+sudo apt install nftables python3-gi gir1.2-adw-1 gir1.2-gtk-4.0 policykit-1 dnsutils build-essential pkg-config git curl libluajit-5.1-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev zlib1g-dev dnscrypt-proxy
+```
+
+```bash
+sudo dnf install nftables python3-gobject libadwaita gtk4 polkit bind-utils gcc make pkgconf git curl luajit-devel libnetfilter_queue-devel libnfnetlink-devel libmnl-devel zlib-devel dnscrypt-proxy
+```
+
+</details>
+
+`build` komutu `bol-van/zapret` ve `bol-van/zapret2` depolarını
+`/opt/zapret-turkey/src` altına klonlayıp `nfqws` / `nfqws2` ikililerini derler;
+sonradan `sudo zapret-turkeyctl build` ile motorları güncelleyebilirsiniz.
 
 ## Kullanım
 
