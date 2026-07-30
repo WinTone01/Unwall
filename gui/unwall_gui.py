@@ -861,6 +861,7 @@ class Window(Adw.ApplicationWindow):
     def on_about(self, *_):
         kwargs = dict(
             application_name=T("Unwall"),
+            application_icon=APP_ID,
             version=VERSION,
             comments=T(
                 "Linux control panel for the bol-van/zapret and zapret2 engines.\n"

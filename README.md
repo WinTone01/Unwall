@@ -1,4 +1,8 @@
-# Unwall
+<p align="center">
+  <img src="docs/logo.png" width="112" alt="Unwall">
+</p>
+
+<h1 align="center">Unwall</h1>
 
 **English** · [Türkçe](README.tr.md)
 
