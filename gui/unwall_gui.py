@@ -22,6 +22,8 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 APP_ID = "io.github.WinTone01.Unwall"
 VERSION = "1.0.0"
 
+POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
+
 CONFIG_DIR = os.path.join(
     os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
     "unwall",
@@ -256,6 +258,7 @@ class Window(Adw.ApplicationWindow):
         self.config = {}
         self.strategies = []
         self._busy = False
+        self._refreshing = False
         self._loading = True
         # Kullanıcı bir seçim değiştirip henüz uygulamadıysa, periyodik durum
         # yenilemesi kontrolleri config'teki eski değerlere geri çevirmesin.
@@ -585,19 +588,28 @@ class Window(Adw.ApplicationWindow):
     # -----------------------------------------------------------------
 
     def _tick(self):
-        if not self._busy:
+        # Yenileme hâlâ sürüyorsa üstüne binme: ctl çağrıları ana döngüde
+        # çalışıyor, takılan bir çağrı arayüzü dondurur.
+        if not self._busy and not self._refreshing:
             self.refresh()
         return True
 
     def refresh(self):
-        code, out = ctl("status")
+        self._refreshing = True
+        try:
+            self._refresh()
+        finally:
+            self._refreshing = False
+
+    def _refresh(self):
+        code, out = ctl("status", timeout=POLL_TIMEOUT)
         if code != 0 and not out.strip():
             self.lbl_state.set_label(T("INSTALLATION INCOMPLETE"))
             self.lbl_sub.set_label(T("{} not found. Run install.sh.").format(CTL))
             self.btn_main.set_sensitive(False)
             return
         self.status = parse_kv(out)
-        _, cfg_out = ctl("config", "get")
+        _, cfg_out = ctl("config", "get", timeout=POLL_TIMEOUT)
         self.config = parse_kv(cfg_out)
 
         # Bekleyen (henüz uygulanmamış) bir seçim varsa kontrollere dokunma;
@@ -659,20 +671,20 @@ class Window(Adw.ApplicationWindow):
             self.btn_main.remove_css_class("destructive-action")
             self.btn_main.add_css_class("suggested-action")
 
-        _, conf_out = ctl("conflicts")
+        _, conf_out = ctl("conflicts", timeout=POLL_TIMEOUT)
         conflicts = parse_kv(conf_out).get("conflicts", "")
         self.banner.set_revealed(bool(conflicts))
         if conflicts:
             self.banner.set_title(T("Conflicting DPI tool running: {}").format(conflicts))
 
-        _, gw = ctl("gateway-info")
+        _, gw = ctl("gateway-info", timeout=POLL_TIMEOUT)
         gwd = parse_kv(gw)
         self.row_gw_info.set_subtitle(
             f"{gwd.get('lan') or gwd.get('wan_ip') or '—'}  (WAN: {gwd.get('wan_iface') or '—'})"
         )
 
     def _refresh_dns(self):
-        _, out = ctl("dns", "status")
+        _, out = ctl("dns", "status", timeout=POLL_TIMEOUT)
         d = parse_kv(out)
         self.dns = d
         backend = d.get("backend", "none")
@@ -708,7 +720,7 @@ class Window(Adw.ApplicationWindow):
         self.row_dns_backend.set_sensitive(on)
 
     def _load_strategies(self, engine, selected):
-        code, out = ctl("strategies", engine)
+        code, out = ctl("strategies", engine, timeout=POLL_TIMEOUT)
         self.strategies = []
         labels = []
         for line in out.splitlines():
@@ -910,10 +922,23 @@ def main():
         log.error("could not register the application: %s", exc.message)
         return 1
     if app.get_is_remote():
+        pid = ""
+        try:
+            pid = subprocess.run(
+                ["pgrep", "-f", r"python.*unwall_gui\.py"], capture_output=True, text=True
+            ).stdout.split()
+            pid = pid[0] if pid else ""
+        except OSError:
+            pass
         log.warning(
-            "an Unwall window is already running; it will be raised "
-            "instead. To see logs in this terminal, close it first or start "
-            "with UW_NO_UNIQUE=1 unwall."
+            "an Unwall window is already running%s; it will be raised instead.",
+            f" (pid {pid})" if pid else "",
+        )
+        log.warning(
+            "if no window appears, that instance is stuck: kill %s  "
+            "(or: pkill -f unwall_gui.py), then start again. For a separate "
+            "instance with logs in this terminal: UW_NO_UNIQUE=1 unwall",
+            pid or "<pid>",
         )
     return app.run(None)
 
