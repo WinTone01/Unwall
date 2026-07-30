@@ -695,12 +695,63 @@ cmd_doctor() {
 # Motorların derlenmesi
 # =====================================================================
 
+# Derleme öncesi başlık/kütüphane kontrolü. Ham derleyici hatası yerine
+# dağıtıma uygun kurulum komutunu gösterir.
+build_prereq_check() {
+	local which="$1"
+	local missing=""
+
+	have_lib() { # ad, pkg-config adı, aranacak başlık
+		pkg-config --exists "$2" 2>/dev/null && return 0
+		[ -n "$3" ] && [ -e "/usr/include/$3" ] && return 0
+		return 1
+	}
+
+	have_lib libnetfilter_queue libnetfilter_queue libnetfilter_queue/libnetfilter_queue.h \
+		|| missing="$missing libnetfilter_queue"
+	have_lib libnfnetlink libnfnetlink libnfnetlink/libnfnetlink.h \
+		|| missing="$missing libnfnetlink"
+	have_lib libmnl libmnl libmnl/libmnl.h || missing="$missing libmnl"
+	have_lib zlib zlib zlib.h || missing="$missing zlib"
+	if [ "$which" = "zapret2" ] || [ "$which" = "all" ]; then
+		have_lib luajit luajit "" || missing="$missing luajit"
+	fi
+
+	[ -z "$missing" ] && return 0
+
+	warn "eksik geliştirme kütüphaneleri:$missing"
+	echo
+	if command -v pacman >/dev/null 2>&1; then
+		echo "    sudo pacman -S --needed$missing"
+	elif command -v apt-get >/dev/null 2>&1; then
+		local deb=""
+		case "$missing" in *libnetfilter_queue*) deb="$deb libnetfilter-queue-dev" ;; esac
+		case "$missing" in *libnfnetlink*)       deb="$deb libnfnetlink-dev" ;; esac
+		case "$missing" in *libmnl*)             deb="$deb libmnl-dev" ;; esac
+		case "$missing" in *zlib*)               deb="$deb zlib1g-dev" ;; esac
+		case "$missing" in *luajit*)             deb="$deb libluajit-5.1-dev" ;; esac
+		echo "    sudo apt install$deb"
+	elif command -v dnf >/dev/null 2>&1; then
+		local rpm=""
+		case "$missing" in *libnetfilter_queue*) rpm="$rpm libnetfilter_queue-devel" ;; esac
+		case "$missing" in *libnfnetlink*)       rpm="$rpm libnfnetlink-devel" ;; esac
+		case "$missing" in *libmnl*)             rpm="$rpm libmnl-devel" ;; esac
+		case "$missing" in *zlib*)               rpm="$rpm zlib-devel" ;; esac
+		case "$missing" in *luajit*)             rpm="$rpm luajit-devel" ;; esac
+		echo "    sudo dnf install$rpm"
+	fi
+	echo
+	die "kurulumdan sonra 'zapret-turkeyctl build' komutunu tekrar çalıştırın"
+}
+
 cmd_build() {
 	need_root
 	local which="${1:-all}"
 	command -v git >/dev/null || die "git gerekli"
 	command -v make >/dev/null || die "make gerekli"
 	command -v cc >/dev/null || command -v gcc >/dev/null || die "C derleyicisi gerekli"
+	command -v pkg-config >/dev/null || die "pkg-config gerekli"
+	build_prereq_check "$which"
 
 	mkdir -p "$SRC_DIR" "$ENGINE_DIR"
 
