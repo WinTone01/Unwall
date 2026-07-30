@@ -68,8 +68,14 @@ category); launch it from there or with the `zapret-turkey` command.
 
 To install as an Arch/CachyOS package: `cd packaging && makepkg -si`
 
-To remove: `sudo ./uninstall.sh` (add `--purge` to delete settings too).
-Uninstalling also reverts the encrypted DNS configuration.
+To remove everything: `sudo ./uninstall.sh`. It stops and disables the service,
+drops the nftables rules, reverts the encrypted DNS configuration (restoring any
+`dnscrypt-proxy.toml` it replaced), deletes the program files, the settings and
+lists, the compiled engines and source tree, and the logs — then verifies that
+nothing is left behind. Use `--yes` to skip the confirmation, `--keep-config` to
+preserve `/etc/zapret-turkey`, and `--purge-deps` to remove the `dnscrypt-proxy`
+package as well. Other dependencies (nftables, gtk4, luajit …) are left alone
+because other software may need them.
 
 <details>
 <summary>Installing dependencies manually</summary>

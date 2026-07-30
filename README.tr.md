@@ -64,8 +64,14 @@ oradan ya da `zapret-turkey` komutuyla açabilirsiniz.
 
 Arch/CachyOS için paket olarak kurmak isterseniz: `cd packaging && makepkg -si`
 
-Kaldırmak için: `sudo ./uninstall.sh` (ayarları da silmek için `--purge`).
-Kaldırma, şifreli DNS ayarlarını da geri alır.
+Her şeyi kaldırmak için: `sudo ./uninstall.sh`. Servisi durdurup devre dışı
+bırakır, nftables kurallarını siler, şifreli DNS yapılandırmasını geri alır
+(değiştirdiği `dnscrypt-proxy.toml` varsa yedekten geri yükler), program
+dosyalarını, ayarları ve listeleri, derlenmiş motorları ve kaynak ağacını,
+günlükleri siler; sonunda geriye iz kalmadığını doğrular. `--yes` onay sormaz,
+`--keep-config` `/etc/zapret-turkey` dizinini korur, `--purge-deps`
+`dnscrypt-proxy` paketini de kaldırır. Diğer bağımlılıklar (nftables, gtk4,
+luajit …) başka yazılımlar kullanabileceği için sistemde bırakılır.
 
 <details>
 <summary>Bağımlılıkları elle kurmak isterseniz</summary>
