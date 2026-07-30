@@ -16,8 +16,10 @@ systemd servisi ve GTK4 arayüzü ekler.
 ## Özellikler
 
 - **Çoklu motor**: klasik `nfqws` (zapret) ve yeni LUA tabanlı `nfqws2` (zapret2).
-- **Hazır stratejiler**: Türk Telekom, Superonline, Vodafone, Turkcell/Telekom
-  mobil profilleri — blockcheck beklemeden denenebilir.
+- **Hazır stratejiler**: Türk Telekom (+alternatif), Superonline (+alternatif),
+  Kablonet, Vodafone, Turkcell/Telekom mobil ve operatörden bağımsız genel
+  profiller — blockcheck beklemeden denenebilir. Kaynak: bu projenin Windows
+  sürümü ve splitwire-turkey `presets.txt`.
 - **Blockcheck**: operatörünüz için çalışan stratejiyi otomatik arar, sonucu
   doğrudan yapılandırmaya yazar.
 - **Hostlist / excludelist**: yalnızca engellenen alan adları motordan geçer;
@@ -42,21 +44,17 @@ Bu tek komut her şeyi yapar:
 
 1. Dağıtımınızı tanır (`pacman` / `apt` / `dnf` / `zypper`) ve **gerekli +
    isteğe bağlı tüm paketleri kurar** (`dnscrypt-proxy` dahil)
-2. Dosyaları, systemd birimini, polkit politikasını ve masaüstü girdisini yerleştirir
-3. Sistemde çakışan upstream `zapret.service` varsa devre dışı bırakmayı önerir
-4. `nfqws` ve `nfqws2` motorlarını kaynaktan derler
-5. Şifreli DNS'i açar (DoH varsa DoH, yoksa DoT)
-6. Servisi başlatıp açılışta otomatik başlatmaya alır
-7. `doctor` ile son durumu gösterir
+2. Dosyaları, systemd birimini, polkit politikasını, ikonu ve uygulama menüsü
+   girdisini yerleştirir
+3. `nfqws` ve `nfqws2` motorlarını kaynaktan derler
 
-Adımlar sorulur; hepsine "evet" demek için `--yes` kullanın:
+Kurulum **hiçbir servisi başlatmaz ve hiçbir sistem ayarını değiştirmez**.
+DNS, otomatik başlatma, strateji seçimi, ağ geçidi — hepsi arayüzden yapılır.
 
-```bash
-sudo ./install.sh --yes
-```
+Seçenekler: `--yes` (soru sorma), `--no-deps`, `--no-build`, `PREFIX=/usr`.
 
-Seçenekler: `--no-deps` (paket kurma), `--no-build` (derleme yok),
-`--no-dns` / `--dns=quad9`, `--no-autostart`, `PREFIX=/usr`.
+Kurulumdan sonra uygulama menüsünde **Zapret Türkiye** (Ağ kategorisi) belirir;
+oradan ya da `zapret-turkey` komutuyla açabilirsiniz.
 
 Arch/CachyOS için paket olarak kurmak isterseniz: `cd packaging && makepkg -si`
 
@@ -107,6 +105,7 @@ sudo zapret-turkeyctl start STRATEGY=superonline ENGINE=zapret2
 | `sudo zapret-turkeyctl dns enable\|disable` | şifreli DNS (DoT/DoH) aç / kapat |
 | `zapret-turkeyctl dns status\|test` | şifreli DNS durumu / sınaması |
 | `zapret-turkeyctl doctor` | ortam / çakışma teşhisi |
+| `sudo zapret-turkeyctl disable-conflicts` | çakışan DPI araçlarını kapat |
 | `zapret-turkeyctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
 
 Ayar dosyası: `/etc/zapret-turkey/zapret-turkey.conf`

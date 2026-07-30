@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8443a"/>
+      <stop offset="1" stop-color="#b81f18"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#ffe9c7"/>
+    </linearGradient>
+    <!-- hilal: büyük daireden kaydırılmış daireyi çıkararak -->
+    <mask id="crescent">
+      <rect width="64" height="64" fill="black"/>
+      <circle cx="25" cy="25" r="11" fill="white"/>
+      <circle cx="29.5" cy="25" r="9" fill="black"/>
+    </mask>
+  </defs>
+
+  <!-- kalkan: sansüre karşı koruma -->
+  <path d="M32 3 L57 12 v20 c0 15-11 24-25 29 C18 56 7 47 7 32 V12 Z"
+        fill="url(#shield)"/>
+  <path d="M32 3 L57 12 v20 c0 15-11 24-25 29 C18 56 7 47 7 32 V12 Z"
+        fill="none" stroke="#7d1310" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- hilal ve yıldız: Türkiye -->
+  <rect width="64" height="64" fill="#ffffff" mask="url(#crescent)"/>
+  <path d="M42 17.5 l1.75 5.05 5.35.1 -4.3 3.2 1.55 5.15 -4.35-3.05 -4.35 3.05 1.55-5.15 -4.3-3.2 5.35-.1 Z"
+        fill="#ffffff"/>
+
+  <!-- paketi bölen ok: DPI atlatma -->
+  <path d="M17 47.5 h11 l-4-4.5 h7.5 l9 7 -9 7 h-7.5 l4-4.5 H17 Z"
+        fill="url(#bolt)" stroke="#7d1310" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

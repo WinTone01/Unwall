@@ -30,7 +30,11 @@ rm -f "$BINDIR/zapret-turkeyctl" "$BINDIR/zapret-turkey"
 rm -rf "$LIBDIR"
 rm -f /etc/systemd/system/zapret-turkey.service
 rm -f /usr/share/polkit-1/actions/org.zapret.turkey.policy
+rm -f /usr/share/applications/org.zapret.turkey.desktop
 rm -f /usr/share/applications/zapret-turkey.desktop
+rm -f /usr/share/icons/hicolor/scalable/apps/zapret-turkey.svg
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications || true
+command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -qtf /usr/share/icons/hicolor || true
 rm -f /etc/modules-load.d/zapret-turkey.conf
 systemctl daemon-reload
 

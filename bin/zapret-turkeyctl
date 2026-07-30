@@ -30,7 +30,7 @@ CUSTOM_ARGS=""
 HOSTLIST_MODE="auto"
 QNUM="210"
 PORTS_TCP="80,443"
-PORTS_UDP="443"
+PORTS_UDP="443,50000-50100"
 GATEWAY_MODE="0"
 WAN_IFACE=""
 ENABLE_IPV6="0"
@@ -333,18 +333,74 @@ cmd_enable() {
 cmd_stop()    { need_root; systemctl stop "$UNIT"; cmd_nft_flush; }
 cmd_disable() { need_root; systemctl disable --now "$UNIT" 2>/dev/null || true; cmd_nft_flush; }
 
+# Blockcheck kendi geçici nfqws süreçlerini rastgele bir kuyruk numarasıyla
+# başlatır; bunlar çakışma sayılmamalı. Sürecin ata zincirinde blockcheck
+# varsa atlıyoruz.
+is_blockcheck_proc() {
+	local pid="$1" i=0 cmd
+	while [ "$pid" -gt 1 ] && [ "$i" -lt 6 ]; do
+		cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+		case "$cmd" in *blockcheck*) return 0 ;; esac
+		pid="$(awk '{print $4}' "/proc/$pid/stat" 2>/dev/null || echo 1)"
+		[ -n "$pid" ] || return 1
+		i=$((i + 1))
+	done
+	return 1
+}
+
+# Bizim servisimize ait olmayan, blockcheck'e de ait olmayan DPI süreçleri
+foreign_dpi_pids() {
+	local p
+	for p in $(pgrep -x 'nfqws|nfqws2|tpws|ciadpi|byedpi' 2>/dev/null || true); do
+		grep -qs "$UNIT" "/proc/$p/cgroup" 2>/dev/null && continue
+		is_blockcheck_proc "$p" && continue
+		printf '%s\n' "$p"
+	done
+}
+
 conflict_guard() {
 	# Aynı anda çalışan başka bir DPI atlatma aracı kuyruğu bozar
 	local p
-	for p in $(pgrep -x 'nfqws|nfqws2|tpws|ciadpi|byedpi' 2>/dev/null || true); do
-		# kendi servisimizin süreci değilse uyar
-		if ! grep -qs "$UNIT" "/proc/$p/cgroup" 2>/dev/null; then
-			warn "çakışan süreç çalışıyor: PID $p ($(cat "/proc/$p/comm" 2>/dev/null))"
-		fi
+	for p in $(foreign_dpi_pids); do
+		warn "çakışan süreç çalışıyor: PID $p ($(cat "/proc/$p/comm" 2>/dev/null))"
 	done
 	if systemctl is-active --quiet zapret.service 2>/dev/null; then
 		warn "upstream zapret.service aktif; NFQUEUE kuralları çakışabilir"
 	fi
+}
+
+# Çakışan DPI araçlarını kapatır (arayüzdeki uyarı çubuğu bunu çağırır)
+cmd_disable_conflicts() {
+	need_root
+	local done_any=0
+	if systemctl is-enabled --quiet zapret.service 2>/dev/null ||
+	   systemctl is-active --quiet zapret.service 2>/dev/null; then
+		info "upstream zapret.service durduruluyor"
+		systemctl disable --now zapret.service || true
+		done_any=1
+	fi
+	local p
+	for p in $(foreign_dpi_pids); do
+		info "süreç sonlandırılıyor: $(cat "/proc/$p/comm" 2>/dev/null) ($p)"
+		kill "$p" 2>/dev/null || true
+		done_any=1
+	done
+	[ "$done_any" = 1 ] || info "çakışan bir şey bulunamadı"
+	return 0
+}
+
+# Arayüzün uyarı çubuğu için: çakışma var mı?
+cmd_conflicts() {
+	local found=""
+	if systemctl is-enabled --quiet zapret.service 2>/dev/null ||
+	   systemctl is-active --quiet zapret.service 2>/dev/null; then
+		found="zapret.service"
+	fi
+	local p
+	for p in $(foreign_dpi_pids); do
+		found="${found:+$found, }$(cat "/proc/$p/comm" 2>/dev/null)($p)"
+	done
+	printf 'conflicts=%s\n' "$found"
 }
 
 cmd_status() {
@@ -670,8 +726,8 @@ cmd_doctor() {
 	fi
 
 	local p others=""
-	for p in $(pgrep -x 'nfqws|nfqws2|tpws|ciadpi|byedpi' 2>/dev/null || true); do
-		grep -qs "$UNIT" "/proc/$p/cgroup" 2>/dev/null || others="$others $(cat "/proc/$p/comm" 2>/dev/null)($p)"
+	for p in $(foreign_dpi_pids); do
+		others="$others $(cat "/proc/$p/comm" 2>/dev/null)($p)"
 	done
 	[ -z "$others" ] && check "çakışan süreç" 0 || check "çakışan süreç" 1 "$others"
 
@@ -902,6 +958,8 @@ Kullanım: zapret-turkeyctl <komut> [argüman]
   dns enable [sağlayıcı] [arka-uç]   DoT/DoH aç      (root)
   dns disable               şifreli DNS'i kapat      (root)
   doctor                    çakışma/ortam teşhisi
+  conflicts                 çakışan araçları listele
+  disable-conflicts         çakışan araçları kapat   (root)
   gateway-info              ağ geçidi modu bilgisi
   nft-apply | nft-flush     kuralları uygula/temizle (root)
   run-engine                motoru ön planda çalıştır (systemd kullanır)
@@ -925,6 +983,8 @@ main() {
 	dnscheck)     cmd_dnscheck "$@" ;;
 	dns)          cmd_dns "$@" ;;
 	doctor)       cmd_doctor ;;
+	conflicts)    cmd_conflicts ;;
+	disable-conflicts) cmd_disable_conflicts ;;
 	gateway-info) cmd_gateway_info ;;
 	nft-apply)    cmd_nft_apply ;;
 	print-cmd)    cmd_print_cmd ;;

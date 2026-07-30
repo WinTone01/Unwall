@@ -117,6 +117,20 @@ class Window(Adw.ApplicationWindow):
             act.connect("activate", cb)
             self.add_action(act)
 
+        # Çakışan başka bir DPI aracı varsa üstte uyarı çubuğu
+        self.banner = Adw.Banner(
+            title="Çakışan bir DPI aracı çalışıyor",
+            button_label="Kapat",
+            revealed=False,
+        )
+        self.banner.connect(
+            "button-clicked",
+            lambda *_: self.run_privileged(
+                ["disable-conflicts"], title="çakışanları kapat"
+            ),
+        )
+        toolbar.add_top_bar(self.banner)
+
         page = Adw.PreferencesPage()
         toolbar.set_content(page)
 
@@ -437,6 +451,12 @@ class Window(Adw.ApplicationWindow):
         else:
             self.btn_main.remove_css_class("destructive-action")
             self.btn_main.add_css_class("suggested-action")
+
+        _, conf_out = ctl("conflicts")
+        conflicts = parse_kv(conf_out).get("conflicts", "")
+        self.banner.set_revealed(bool(conflicts))
+        if conflicts:
+            self.banner.set_title(f"Çakışan DPI aracı çalışıyor: {conflicts}")
 
         _, gw = ctl("gateway-info")
         gwd = parse_kv(gw)

@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Zapret Türkiye
+GenericName=DPI Engel Aşma
+GenericName[en]=DPI Bypass
+Comment=DPI tabanlı engelleri atlatmak için zapret kontrol paneli
+Comment[en]=Control panel for the zapret DPI bypass engine
+Exec=zapret-turkey
+Icon=zapret-turkey
+Terminal=false
+Categories=Qt;KDE;Network;Security;
+Keywords=zapret;dpi;discord;roblox;sansür;engel;bypass;vpn;dns;
+StartupNotify=true
+StartupWMClass=org.zapret.turkey
+X-KDE-StartupNotify=true

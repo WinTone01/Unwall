@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # Zapret Linux Türkiye kurulumu
 #
-# Tek komutla her şeyi yapar: paketleri kurar, dosyaları yerleştirir,
-# motorları derler, isterseniz şifreli DNS'i açar ve servisi etkinleştirir.
+# Yalnızca uygulamayı kurar: paketleri kurar, dosyaları yerleştirir ve
+# motorları derler. Hiçbir servisi başlatmaz, hiçbir sistem ayarını
+# (DNS, otomatik başlatma, ağ kuralları) değiştirmez -- bunların hepsi
+# grafik arayüzden yapılır.
 #
-#   sudo ./install.sh                 # sorular sorarak tam kurulum
-#   sudo ./install.sh --yes           # hiçbir şey sormadan hepsini yap
+#   sudo ./install.sh                 # kur
+#   sudo ./install.sh --yes           # soru sormadan kur
 #   sudo ./install.sh --no-deps       # paket kurulumunu atla
 #   sudo ./install.sh --no-build      # motor derlemeyi atla
-#   sudo ./install.sh --no-dns        # şifreli DNS'e hiç dokunma
-#   sudo ./install.sh --dns=quad9     # şifreli DNS'i bu sağlayıcıyla aç
-#   sudo ./install.sh --no-autostart  # servisi etkinleştirme
 #   sudo PREFIX=/usr ./install.sh     # farklı önek
 #
 set -euo pipefail
@@ -24,6 +23,7 @@ LOGDIR="/var/log/zapret-turkey"
 UNITDIR="/etc/systemd/system"
 POLKITDIR="/usr/share/polkit-1/actions"
 DESKTOPDIR="/usr/share/applications"
+ICONDIR="/usr/share/icons/hicolor/scalable/apps"
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
 CTL="$BINDIR/zapret-turkeyctl"
@@ -32,20 +32,13 @@ CTL="$BINDIR/zapret-turkeyctl"
 ASSUME_YES=0
 DO_DEPS=1
 DO_BUILD=1
-DO_DNS=ask          # ask | no | <sağlayıcı>
-DO_AUTOSTART=ask    # ask | no | yes
 
 for arg in "$@"; do
 	case "$arg" in
 	--yes|-y)       ASSUME_YES=1 ;;
 	--no-deps)      DO_DEPS=0 ;;
 	--no-build)     DO_BUILD=0 ;;
-	--no-dns)       DO_DNS=no ;;
-	--dns)          DO_DNS=cloudflare ;;
-	--dns=*)        DO_DNS="${arg#--dns=}" ;;
-	--no-autostart) DO_AUTOSTART=no ;;
-	--autostart)    DO_AUTOSTART=yes ;;
-	-h|--help)      sed -n '2,15p' "$0"; exit 0 ;;
+	-h|--help)      sed -n '2,14p' "$0"; exit 0 ;;
 	*) echo "bilinmeyen seçenek: $arg" >&2; exit 1 ;;
 	esac
 done
@@ -204,13 +197,27 @@ sed -e "s|@BINDIR@|$BINDIR|g" \
 	"$SRC/polkit/org.zapret.turkey.policy" > "$POLKITDIR/org.zapret.turkey.policy"
 chmod 0644 "$POLKITDIR/org.zapret.turkey.policy"
 
-install -d "$DESKTOPDIR"
-install -m 0644 "$SRC/share/zapret-turkey.desktop" "$DESKTOPDIR/zapret-turkey.desktop"
+# Uygulama menüsü girdisi ve ikon (KDE/GNOME ortak hicolor teması)
+install -d "$DESKTOPDIR" "$ICONDIR"
+install -m 0644 "$SRC/share/org.zapret.turkey.desktop" "$DESKTOPDIR/org.zapret.turkey.desktop"
+install -m 0644 "$SRC/share/zapret-turkey.svg" "$ICONDIR/zapret-turkey.svg"
+# eski isimle kurulmuş girdi kaldıysa temizle
+rm -f "$DESKTOPDIR/zapret-turkey.desktop"
 
-systemctl daemon-reload
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$DESKTOPDIR" || true
+command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -qtf /usr/share/icons/hicolor || true
+# KDE'nin menü önbelleği: kullanıcının oturumunda yenilensin
+if [ -n "${SUDO_USER:-}" ] && command -v kbuildsycoca6 >/dev/null 2>&1; then
+	runuser -u "$SUDO_USER" -- kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+elif [ -n "${SUDO_USER:-}" ] && command -v kbuildsycoca5 >/dev/null 2>&1; then
+	runuser -u "$SUDO_USER" -- kbuildsycoca5 --noincremental >/dev/null 2>&1 || true
+fi
+
+systemctl daemon-reload || true
 modprobe nfnetlink_queue 2>/dev/null || true
 echo "nfnetlink_queue" > /etc/modules-load.d/zapret-turkey.conf
 note "kuruldu: $CTL"
+note "uygulama menüsüne eklendi: Zapret Türkiye"
 
 # =====================================================================
 # 3. Çakışan kurulum
@@ -221,12 +228,8 @@ if systemctl is-enabled --quiet zapret.service 2>/dev/null ||
 	step "çakışma saptandı"
 	note "sistemde upstream zapret.service etkin. İkisi aynı anda çalışırsa"
 	note "NFQUEUE kuralları çakışır."
-	if ask_yn "upstream zapret.service durdurulup devre dışı bırakılsın mı?" y; then
-		systemctl disable --now zapret.service || true
-		note "devre dışı bırakıldı"
-	else
-		warn "açık bırakıldı; bu projeyi başlatmadan önce kendiniz durdurun"
-	fi
+	note "Arayüzdeki uyarı çubuğundaki 'Kapat' düğmesiyle ya da şu komutla"
+	note "kapatabilirsiniz:  sudo zapret-turkeyctl disable-conflicts"
 fi
 
 # =====================================================================
@@ -244,76 +247,21 @@ else
 	step "motor derlemesi atlandı (--no-build)"
 fi
 
-# =====================================================================
-# 5. Şifreli DNS
-# =====================================================================
-
-dns_provider=""
-case "$DO_DNS" in
-no) step "şifreli DNS atlandı (--no-dns)" ;;
-ask)
-	step "şifreli DNS"
-	note "ISS DNS'e müdahale ediyorsa zapret tek başına yetmez."
-	note "dnscrypt-proxy varsa DoH (443), yoksa DoT (853) kullanılır."
-	ask_yn "şifreli DNS açılsın mı?" y && dns_provider=cloudflare
-	;;
-*) dns_provider="$DO_DNS" ;;
-esac
-
-if [ -n "$dns_provider" ]; then
-	step "şifreli DNS açılıyor ($dns_provider)"
-	"$CTL" dns enable "$dns_provider" auto || warn "şifreli DNS açılamadı"
-fi
-
-# =====================================================================
-# 6. Otomatik başlatma
-# =====================================================================
-
-start_now=0
-engine_ready="$("$CTL" status | sed -n 's/^engine_ready=//p')"
-
-if [ "$engine_ready" != "1" ]; then
-	step "otomatik başlatma atlandı"
-	warn "motor ikilisi hazır değil; servis başlatılsa yeniden başlatma"
-	warn "döngüsüne girerdi. Önce derleyin:"
-	note "sudo zapret-turkeyctl build   &&   sudo zapret-turkeyctl enable"
-	# yarım kalmış bir etkinleştirme varsa temizle
-	systemctl disable --now zapret-turkey.service >/dev/null 2>&1 || true
-else
-	case "$DO_AUTOSTART" in
-	no)  step "servis etkinleştirme atlandı (--no-autostart)" ;;
-	yes) start_now=1 ;;
-	ask)
-		step "otomatik başlatma"
-		note "seçili strateji: $("$CTL" config get STRATEGY) (motor: $("$CTL" config get ENGINE))"
-		note "arayüzden istediğiniz zaman değiştirebilirsiniz."
-		ask_yn "zapret şimdi başlatılıp açılışta otomatik açılsın mı?" y && start_now=1
-		;;
-	esac
-fi
-
-if [ "$start_now" = 1 ]; then
-	step "servis etkinleştiriliyor"
-	if "$CTL" enable; then
-		note "çalışıyor ve açılışta otomatik başlayacak"
-	else
-		warn "başlatılamadı: journalctl -u zapret-turkey -n 30"
-	fi
-fi
-
-# =====================================================================
-
 step "durum"
 "$CTL" doctor || true
 
 cat <<EOF
 
-Kurulum tamamlandı.
+Kurulum tamamlandı. Hiçbir servis başlatılmadı, sistem ayarlarınıza
+dokunulmadı.
 
-    zapret-turkey                    grafik arayüz (uygulama menüsünde de var)
-    sudo zapret-turkeyctl start      motoru başlat
-    sudo zapret-turkeyctl blockcheck ISS'niz için strateji ara
-    zapret-turkeyctl doctor          ortam teşhisi
+Buradan sonrası arayüzden: uygulama menüsünde "Zapret Türkiye"
+(Ağ / Internet kategorisi) ya da terminalden:
+
+    zapret-turkey
+
+Arayüzden strateji seçip başlatabilir, şifreli DNS'i açabilir, açılışta
+otomatik başlatmayı etkinleştirebilirsiniz.
 
 Kaldırmak için: sudo ./uninstall.sh   (ayarları da silmek için --purge)
 

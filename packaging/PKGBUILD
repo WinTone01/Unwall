@@ -57,8 +57,10 @@ package() {
 	install -Dm644 "$srcdir/org.zapret.turkey.policy" \
 		"$pkgdir/usr/share/polkit-1/actions/org.zapret.turkey.policy"
 
-	install -Dm644 share/zapret-turkey.desktop \
-		"$pkgdir/usr/share/applications/zapret-turkey.desktop"
+	install -Dm644 share/org.zapret.turkey.desktop \
+		"$pkgdir/usr/share/applications/org.zapret.turkey.desktop"
+	install -Dm644 share/zapret-turkey.svg \
+		"$pkgdir/usr/share/icons/hicolor/scalable/apps/zapret-turkey.svg"
 	install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 
 	echo 'nfnetlink_queue' > "$srcdir/modules.conf"
