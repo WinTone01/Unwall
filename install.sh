@@ -79,56 +79,69 @@ for m in pacman apt-get dnf zypper; do
 	command -v "$m" >/dev/null 2>&1 && { PKG_MGR="$m"; break; }
 done
 
+# Paketleri tek tek kurar: biri deposunda yoksa ya da çakışırsa diğerleri
+# yine de kurulur (toplu işlem tek bir çakışmada tamamen düşerdi).
+pkg_install_each() {
+	local p rc=0
+	for p in "$@"; do
+		case "$PKG_MGR" in
+		pacman)  pacman -S --needed --noconfirm "$p" ;;
+		apt-get) apt-get install -y --no-install-recommends "$p" ;;
+		dnf)     dnf install -y "$p" ;;
+		zypper)  zypper --non-interactive install "$p" ;;
+		esac || { warn "kurulamadı, atlanıyor: $p"; rc=1; }
+	done
+	return $rc
+}
+
 install_packages() {
+	local todo=()
 	case "$PKG_MGR" in
 	pacman)
-		pacman -S --needed --noconfirm \
-			nftables iproute2 python-gobject libadwaita gtk4 polkit bind \
-			gcc make pkgconf git curl luajit libnetfilter_queue libnfnetlink \
-			libmnl zlib dnscrypt-proxy
+		todo=(nftables iproute2 python-gobject libadwaita gtk4 polkit bind
+		      gcc make pkgconf git curl luajit libnetfilter_queue libnfnetlink
+		      libmnl zlib dnscrypt-proxy)
+		# Zaten sağlanmış olanları listeden düşür. pacman -T "provides"
+		# ilişkisini de görür: örn. zlib'i zlib-ng-compat sağlıyorsa zlib
+		# istenmez ve çakışma hiç doğmaz.
+		mapfile -t todo < <(pacman -T "${todo[@]}" 2>/dev/null || true)
 		;;
 	apt-get)
 		export DEBIAN_FRONTEND=noninteractive
-		apt-get update -qq
-		apt-get install -y --no-install-recommends \
-			nftables iproute2 python3-gi gir1.2-adw-1 gir1.2-gtk-4.0 policykit-1 \
-			dnsutils build-essential pkg-config git curl libluajit-5.1-dev \
-			libnetfilter-queue-dev libnfnetlink-dev libmnl-dev zlib1g-dev \
-			dnscrypt-proxy
+		apt-get update -qq || warn "apt-get update başarısız"
+		todo=(nftables iproute2 python3-gi gir1.2-adw-1 gir1.2-gtk-4.0 policykit-1
+		      dnsutils build-essential pkg-config git curl libluajit-5.1-dev
+		      libnetfilter-queue-dev libnfnetlink-dev libmnl-dev zlib1g-dev
+		      dnscrypt-proxy)
 		;;
 	dnf)
-		dnf install -y \
-			nftables iproute python3-gobject libadwaita gtk4 polkit bind-utils \
-			gcc make pkgconf git curl luajit-devel libnetfilter_queue-devel \
-			libnfnetlink-devel libmnl-devel zlib-devel dnscrypt-proxy
+		todo=(nftables iproute python3-gobject libadwaita gtk4 polkit bind-utils
+		      gcc make pkgconf git curl luajit-devel libnetfilter_queue-devel
+		      libnfnetlink-devel libmnl-devel zlib-devel dnscrypt-proxy)
 		;;
 	zypper)
-		zypper --non-interactive install \
-			nftables iproute2 python3-gobject libadwaita-1-0 gtk4-tools polkit \
-			bind-utils gcc make pkg-config git curl luajit-devel \
-			libnetfilter_queue-devel libnfnetlink-devel libmnl-devel zlib-devel \
-			dnscrypt-proxy
+		todo=(nftables iproute2 python3-gobject libadwaita-1-0 gtk4-tools polkit
+		      bind-utils gcc make pkg-config git curl luajit-devel
+		      libnetfilter_queue-devel libnfnetlink-devel libmnl-devel zlib-devel
+		      dnscrypt-proxy)
 		;;
 	*)
 		warn "paket yöneticisi tanınmadı; bağımlılıkları elle kurmanız gerekebilir"
 		return 0
 		;;
 	esac
+
+	if [ "${#todo[@]}" -eq 0 ]; then
+		note "gerekli paketlerin tamamı zaten kurulu"
+		return 0
+	fi
+	note "kurulacak: ${todo[*]}"
+	pkg_install_each "${todo[@]}"
 }
 
 if [ "$DO_DEPS" = 1 ]; then
 	step "bağımlılıklar kuruluyor ($PKG_MGR)"
-	# dnscrypt-proxy isteğe bağlıdır; deposunda yoksa kurulum durmasın
-	if ! install_packages; then
-		warn "toplu kurulum başarısız, dnscrypt-proxy olmadan tekrar deneniyor"
-		{
-			case "$PKG_MGR" in
-			pacman)  pacman -S --needed --noconfirm nftables python-gobject libadwaita gtk4 polkit bind gcc make pkgconf git curl luajit libnetfilter_queue libnfnetlink libmnl zlib ;;
-			apt-get) apt-get install -y --no-install-recommends nftables python3-gi gir1.2-adw-1 policykit-1 dnsutils build-essential pkg-config git curl libluajit-5.1-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev zlib1g-dev ;;
-			dnf)     dnf install -y nftables python3-gobject libadwaita polkit bind-utils gcc make pkgconf git curl luajit-devel libnetfilter_queue-devel libnfnetlink-devel libmnl-devel zlib-devel ;;
-			esac
-		} || warn "paket kurulumu tamamlanamadı; aşağıdaki doğrulamaya bakın"
-	fi
+	install_packages || warn "bazı paketler kurulamadı; aşağıdaki doğrulamaya bakın"
 else
 	step "bağımlılık kurulumu atlandı (--no-deps)"
 fi
@@ -257,16 +270,27 @@ fi
 # =====================================================================
 
 start_now=0
-case "$DO_AUTOSTART" in
-no)  step "servis etkinleştirme atlandı (--no-autostart)" ;;
-yes) start_now=1 ;;
-ask)
-	step "otomatik başlatma"
-	note "seçili strateji: $("$CTL" config get STRATEGY) (motor: $("$CTL" config get ENGINE))"
-	note "arayüzden istediğiniz zaman değiştirebilirsiniz."
-	ask_yn "zapret şimdi başlatılıp açılışta otomatik açılsın mı?" y && start_now=1
-	;;
-esac
+engine_ready="$("$CTL" status | sed -n 's/^engine_ready=//p')"
+
+if [ "$engine_ready" != "1" ]; then
+	step "otomatik başlatma atlandı"
+	warn "motor ikilisi hazır değil; servis başlatılsa yeniden başlatma"
+	warn "döngüsüne girerdi. Önce derleyin:"
+	note "sudo zapret-turkeyctl build   &&   sudo zapret-turkeyctl enable"
+	# yarım kalmış bir etkinleştirme varsa temizle
+	systemctl disable --now zapret-turkey.service >/dev/null 2>&1 || true
+else
+	case "$DO_AUTOSTART" in
+	no)  step "servis etkinleştirme atlandı (--no-autostart)" ;;
+	yes) start_now=1 ;;
+	ask)
+		step "otomatik başlatma"
+		note "seçili strateji: $("$CTL" config get STRATEGY) (motor: $("$CTL" config get ENGINE))"
+		note "arayüzden istediğiniz zaman değiştirebilirsiniz."
+		ask_yn "zapret şimdi başlatılıp açılışta otomatik açılsın mı?" y && start_now=1
+		;;
+	esac
+fi
 
 if [ "$start_now" = 1 ]; then
 	step "servis etkinleştiriliyor"
