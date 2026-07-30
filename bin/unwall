@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Launches the Unwall graphical interface.
+UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
+exec python3 -u "$UW_LIB/unwall_gui.py" "$@"

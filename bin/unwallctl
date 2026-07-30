@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
-# zapret-turkeyctl - Zapret Linux Türkiye kontrol aracı
+# unwallctl - Unwall control tool
 #
-# Ayrıcalıklı işlerin tamamı burada toplanır; grafik arayüz bu betiği
-# pkexec üzerinden çağırır. Tek başına bir CLI olarak da kullanılabilir.
+# Every privileged action lives here; the GUI calls this script through
+# pkexec. It also works as a standalone CLI.
 
 set -euo pipefail
 
 VERSION="1.0.0"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
-ZT_LIB="${ZT_LIB:-/usr/local/lib/zapret-turkey}"
-ZT_ETC="${ZT_ETC:-/etc/zapret-turkey}"
-ZT_OPT="${ZT_OPT:-/opt/zapret-turkey}"
-ZT_LOG="${ZT_LOG:-/var/log/zapret-turkey}"
+UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
+UW_ETC="${UW_ETC:-/etc/unwall}"
+UW_OPT="${UW_OPT:-/opt/unwall}"
+UW_LOG="${UW_LOG:-/var/log/unwall}"
 
-CONF="$ZT_ETC/zapret-turkey.conf"
-STRATEGY_FILE="$ZT_LIB/strategies.conf"
-SRC_DIR="$ZT_OPT/src"
-ENGINE_DIR="$ZT_OPT/engines"
-UNIT="zapret-turkey.service"
+CONF="$UW_ETC/unwall.conf"
+STRATEGY_FILE="$UW_LIB/strategies.conf"
+SRC_DIR="$UW_OPT/src"
+ENGINE_DIR="$UW_OPT/engines"
+UNIT="unwall.service"
 
-NFT_TABLE="zapret_turkey"
+NFT_TABLE="unwall"
 
-# Arayüz dili: ZT_LANG=tr|en, yoksa yerel ayardan. Türkçe dışındaki her
+# Arayüz dili: UW_LANG=tr|en, yoksa yerel ayardan. Türkçe dışındaki her
 # şey İngilizce sayılır.
-case "${ZT_LANG:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}" in
-tr*|TR*) ZT_UI_LANG=tr ;;
-*)       ZT_UI_LANG=en ;;
+case "${UW_LANG:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}" in
+tr*|TR*) UW_UI_LANG=tr ;;
+*)       UW_UI_LANG=en ;;
 esac
 DESYNC_MARK="0x40000000"
 
@@ -44,7 +44,7 @@ ENABLE_IPV6="0"
 
 # Kaynak metinler İngilizce; Türkçe karşılıkları t() içinde.
 t() {
-	[ "$ZT_UI_LANG" = tr ] || { printf '%s' "$1"; return 0; }
+	[ "$UW_UI_LANG" = tr ] || { printf '%s' "$1"; return 0; }
 	case "$1" in
 	"error")                       printf 'hata' ;;
 	"warning")                     printf 'uyarı' ;;
@@ -71,10 +71,10 @@ t() {
 	"ready")                       printf 'hazır:' ;;
 	"missing development libraries")
 		printf 'eksik geliştirme kütüphaneleri' ;;
-	"run 'zapret-turkeyctl build' again after installing them")
-		printf "kurulumdan sonra 'zapret-turkeyctl build' komutunu tekrar çalıştırın" ;;
-	"blockcheck not found, run first: zapret-turkeyctl build")
-		printf 'blockcheck bulunamadı, önce: zapret-turkeyctl build' ;;
+	"run 'unwallctl build' again after installing them")
+		printf "kurulumdan sonra 'unwallctl build' komutunu tekrar çalıştırın" ;;
+	"blockcheck not found, run first: unwallctl build")
+		printf 'blockcheck bulunamadı, önce: unwallctl build' ;;
 	"stopping the engine for the duration of the test")
 		printf 'motor geçici olarak durduruluyor' ;;
 	"blockcheck starting")         printf 'blockcheck başlıyor' ;;
@@ -135,7 +135,7 @@ cmd_config() {
 	set)
 		need_root
 		[ $# -gt 0 ] || die "kullanım: config set KEY=VALUE [KEY=VALUE ...]"
-		[ -f "$CONF" ] || { mkdir -p "$ZT_ETC"; : > "$CONF"; }
+		[ -f "$CONF" ] || { mkdir -p "$UW_ETC"; : > "$CONF"; }
 		local pair key val
 		for pair in "$@"; do
 			key="${pair%%=*}"
@@ -162,7 +162,7 @@ cmd_strategies() {
 	local want="${1:-}"
 	[ -n "$want" ] || { load_config; want="$ENGINE"; }
 	[ -r "$STRATEGY_FILE" ] || die "$(t 'strategy file is missing'): $STRATEGY_FILE"
-	if [ "$ZT_UI_LANG" = tr ]; then
+	if [ "$UW_UI_LANG" = tr ]; then
 		printf 'analiz\tAnaliz Sonucu (blockcheck)\t\n'
 	else
 		printf 'analiz\tBlockcheck result\t\n'
@@ -171,7 +171,7 @@ cmd_strategies() {
 	while IFS='|' read -r eng id label args label_en; do
 		case "$eng" in ''|\#*) continue ;; esac
 		[ "$eng" = "$want" ] || continue
-		[ "$ZT_UI_LANG" = tr ] || [ -z "$label_en" ] || label="$label_en"
+		[ "$UW_UI_LANG" = tr ] || [ -z "$label_en" ] || label="$label_en"
 		printf '%s\t%s\t%s\n' "$id" "$label" "$args"
 	done < "$STRATEGY_FILE"
 }
@@ -332,16 +332,16 @@ build_engine_cmd() {
 	[ -n "$PORTS_TCP" ] && args+=("--filter-tcp=$PORTS_TCP")
 	[ -n "$PORTS_UDP" ] && args+=("--filter-udp=$PORTS_UDP")
 
-	[ -s "$ZT_ETC/excludelist.txt" ] && args+=("--hostlist-exclude=$ZT_ETC/excludelist.txt")
+	[ -s "$UW_ETC/excludelist.txt" ] && args+=("--hostlist-exclude=$UW_ETC/excludelist.txt")
 
 	case "$HOSTLIST_MODE" in
 	auto)
-		touch "$ZT_ETC/autohostlist.txt" 2>/dev/null || true
-		args+=("--hostlist-auto=$ZT_ETC/autohostlist.txt")
+		touch "$UW_ETC/autohostlist.txt" 2>/dev/null || true
+		args+=("--hostlist-auto=$UW_ETC/autohostlist.txt")
 		;;
 	manual)
-		[ -s "$ZT_ETC/hostlist.txt" ] || die "hostlist.txt boş: $ZT_ETC/hostlist.txt"
-		args+=("--hostlist=$ZT_ETC/hostlist.txt")
+		[ -s "$UW_ETC/hostlist.txt" ] || die "hostlist.txt boş: $UW_ETC/hostlist.txt"
+		args+=("--hostlist=$UW_ETC/hostlist.txt")
 		;;
 	off) ;;
 	*) die "geçersiz HOSTLIST_MODE: $HOSTLIST_MODE" ;;
@@ -499,9 +499,9 @@ cmd_status() {
 #              resolved, upstream olarak 127.0.0.1:5300'e yönlendirilir.
 # =====================================================================
 
-RESOLVED_DROPIN="/etc/systemd/resolved.conf.d/90-zapret-turkey.conf"
+RESOLVED_DROPIN="/etc/systemd/resolved.conf.d/90-unwall.conf"
 DNSCRYPT_CONF="/etc/dnscrypt-proxy/dnscrypt-proxy.toml"
-DNSCRYPT_BAK="/etc/dnscrypt-proxy/dnscrypt-proxy.toml.zapret-turkey.bak"
+DNSCRYPT_BAK="/etc/dnscrypt-proxy/dnscrypt-proxy.toml.unwall.bak"
 DNSCRYPT_PORT="5300"
 
 dns_provider_dot() {
@@ -551,7 +551,7 @@ dns_status() {
 	local backend="none" encrypted=0 servers="" provider="" dot="?"
 
 	if [ -f "$RESOLVED_DROPIN" ]; then
-		provider="$(sed -n 's/^# zapret-turkey-provider=//p' "$RESOLVED_DROPIN")"
+		provider="$(sed -n 's/^# unwall-provider=//p' "$RESOLVED_DROPIN")"
 		if grep -q "127.0.0.1:$DNSCRYPT_PORT" "$RESOLVED_DROPIN"; then
 			backend="dnscrypt"
 		else
@@ -604,8 +604,8 @@ dns_enable() {
 		fi
 		mkdir -p "$(dirname "$RESOLVED_DROPIN")"
 		{
-			printf '# zapret-turkey tarafından oluşturuldu - elle düzenlemeyin\n'
-			printf '# zapret-turkey-provider=%s\n' "$provider"
+			printf '# unwall tarafından oluşturuldu - elle düzenlemeyin\n'
+			printf '# unwall-provider=%s\n' "$provider"
 			printf '[Resolve]\n'
 			printf 'DNS=%s\n' "$(dns_provider_dot "$provider")"
 			printf 'DNSOverTLS=yes\n'
@@ -622,8 +622,8 @@ dns_enable() {
 		systemctl enable --now dnscrypt-proxy
 		mkdir -p "$(dirname "$RESOLVED_DROPIN")"
 		{
-			printf '# zapret-turkey tarafından oluşturuldu - elle düzenlemeyin\n'
-			printf '# zapret-turkey-provider=%s\n' "$provider"
+			printf '# unwall tarafından oluşturuldu - elle düzenlemeyin\n'
+			printf '# unwall-provider=%s\n' "$provider"
 			printf '[Resolve]\n'
 			printf 'DNS=127.0.0.1:%s\n' "$DNSCRYPT_PORT"
 			printf 'DNSOverTLS=no\n'
@@ -646,14 +646,14 @@ dnscrypt_write_config() {
 	local provider="$1"
 	local server; server="$(dns_provider_doh "$provider")"
 
-	if [ -f "$DNSCRYPT_CONF" ] && ! grep -q 'zapret-turkey' "$DNSCRYPT_CONF"; then
+	if [ -f "$DNSCRYPT_CONF" ] && ! grep -q 'unwall' "$DNSCRYPT_CONF"; then
 		info "$(t 'backing up the existing dnscrypt-proxy configuration'): $DNSCRYPT_BAK"
 		cp -n "$DNSCRYPT_CONF" "$DNSCRYPT_BAK"
 	fi
 
 	mkdir -p "$(dirname "$DNSCRYPT_CONF")" /var/cache/dnscrypt-proxy
 	cat > "$DNSCRYPT_CONF" <<EOF
-# zapret-turkey tarafından oluşturuldu.
+# unwall tarafından oluşturuldu.
 # Önceki yapılandırma (varsa): $DNSCRYPT_BAK
 # DNS sorguları 443/tcp üzerinden DoH ile taşınır; normal HTTPS trafiğinden
 # ayırt edilemez.
@@ -779,7 +779,7 @@ cmd_doctor() {
 	}
 
 	command -v nft >/dev/null && check "nftables" 0 || check "nftables" 1 "nftables paketini kurun"
-	[ -x "$(engine_bin)" ] && check "motor ($ENGINE)" 0 || check "motor ($ENGINE)" 1 "zapret-turkeyctl build"
+	[ -x "$(engine_bin)" ] && check "motor ($ENGINE)" 0 || check "motor ($ENGINE)" 1 "unwallctl build"
 	local mods; mods="$(lsmod 2>/dev/null || true)"
 	if case "$mods" in *nfnetlink_queue*) true ;; *) false ;; esac || modinfo nfnetlink_queue >/dev/null 2>&1; then
 		check "nfnetlink_queue" 0
@@ -817,7 +817,7 @@ cmd_doctor() {
 
 	local enc; enc="$(dns_status | sed -n 's/^encrypted=//p')"
 	[ "$enc" = "1" ] && check "şifreli DNS" 0 "$(dns_status | sed -n 's/^backend=//p')" \
-		|| check "şifreli DNS" 1 "kapalı  --  'zapret-turkeyctl dns enable' ile açın"
+		|| check "şifreli DNS" 1 "kapalı  --  'unwallctl dns enable' ile açın"
 
 	return $fail
 }
@@ -872,7 +872,7 @@ build_prereq_check() {
 		echo "    sudo dnf install$rpm"
 	fi
 	echo
-	die "$(t "run 'zapret-turkeyctl build' again after installing them")"
+	die "$(t "run 'unwallctl build' again after installing them")"
 }
 
 cmd_build() {
@@ -929,22 +929,22 @@ cmd_blockcheck() {
 	load_config
 	local eng="${1:-$ENGINE}"
 	local base script log
-	mkdir -p "$ZT_LOG"
+	mkdir -p "$UW_LOG"
 
 	case "$eng" in
 	zapret2)
-		script="blockcheck2.sh"; log="$ZT_LOG/blockcheck2.log"
+		script="blockcheck2.sh"; log="$UW_LOG/blockcheck2.log"
 		for base in "$SRC_DIR/zapret2" "/opt/zapret2"; do
 			[ -f "$base/$script" ] && break
 		done ;;
 	zapret)
-		script="blockcheck.sh"; log="$ZT_LOG/blockcheck.log"
+		script="blockcheck.sh"; log="$UW_LOG/blockcheck.log"
 		for base in "$SRC_DIR/zapret" "/opt/zapret"; do
 			[ -f "$base/$script" ] && break
 		done ;;
 	*) die "geçersiz motor: $eng" ;;
 	esac
-	[ -f "$base/$script" ] || die "$(t 'blockcheck not found, run first: zapret-turkeyctl build') $eng"
+	[ -f "$base/$script" ] || die "$(t 'blockcheck not found, run first: unwallctl build') $eng"
 
 	# Çalışan motor blockcheck sonucunu bozar
 	systemctl is-active --quiet "$UNIT" && { info "$(t 'stopping the engine for the duration of the test')"; systemctl stop "$UNIT"; cmd_nft_flush; }
@@ -954,7 +954,7 @@ cmd_blockcheck() {
 
 	env BATCH=1 \
 		ZAPRET_BASE="$base" \
-		ZAPRET_RW="$ZT_LOG" \
+		ZAPRET_RW="$UW_LOG" \
 		DOMAINS="$domains" \
 		IPVS=4 \
 		ENABLE_HTTP="${ENABLE_HTTP:-0}" \
@@ -1013,9 +1013,9 @@ cmd_gateway_info() {
 
 usage() {
 	cat <<EOF
-zapret-turkeyctl $VERSION
+unwallctl $VERSION
 
-Kullanım: zapret-turkeyctl <komut> [argüman]
+Kullanım: unwallctl <komut> [argüman]
 
   status                    durum bilgisi (key=value)
   strategies [motor]        hazır strateji listesi
@@ -1045,9 +1045,9 @@ EOF
 main() {
 	# --lang=tr|en her komuttan önce verilebilir (arayüz bunu kullanır)
 	case "${1:-}" in
-	--lang=*) ZT_UI_LANG="${1#--lang=}"; shift ;;
+	--lang=*) UW_UI_LANG="${1#--lang=}"; shift ;;
 	esac
-	[ "$ZT_UI_LANG" = tr ] || ZT_UI_LANG=en
+	[ "$UW_UI_LANG" = tr ] || UW_UI_LANG=en
 
 	local cmd="${1:-}"; shift || true
 	case "$cmd" in
@@ -1074,7 +1074,7 @@ main() {
 	run-engine)   cmd_run_engine ;;
 	version|--version) printf '%s\n' "$VERSION" ;;
 	help|--help|-h|"") usage ;;
-	*) die "bilinmeyen komut: $cmd (yardım: zapret-turkeyctl help)" ;;
+	*) die "bilinmeyen komut: $cmd (yardım: unwallctl help)" ;;
 	esac
 }
 

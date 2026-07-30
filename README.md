@@ -1,34 +1,35 @@
-# Zapret Linux Turkey
+# Unwall
 
 **English** · [Türkçe](README.tr.md)
 
-A Linux control panel for the [zapret](https://github.com/bol-van/zapret) and
-[zapret2](https://github.com/bol-van/zapret2) engines, tuned for users in
-Turkey who need to get around DPI-based (Deep Packet Inspection) censorship.
+A Linux control panel for [zapret](https://github.com/bol-van/zapret) and
+[zapret2](https://github.com/bol-van/zapret2) — the DPI (Deep Packet Inspection)
+bypass engines by @bol-van. Unwall turns them into something you can actually
+run on a desktop: a systemd service, nftables rules, encrypted DNS, gateway mode
+for your consoles, and a GTK4 interface that never runs as root.
 
 <p align="center">
-  <img src="docs/screenshots/gui-en-top.png" alt="Zapret Turkey GUI - status, engine, strategy and encrypted DNS" width="46%">
-  <img src="docs/screenshots/gui-en-bottom.png" alt="Zapret Turkey GUI - encrypted DNS, gateway mode and service" width="46%">
+  <img src="docs/screenshots/gui-en-top.png" alt="Unwall - status, engine, strategy and encrypted DNS" width="46%">
+  <img src="docs/screenshots/gui-en-bottom.png" alt="Unwall - encrypted DNS, gateway mode and service" width="46%">
 </p>
 
-This is the Linux counterpart of the Windows application
-[zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey)
-(AutoIt + `zapret-win-bundle`).
+On Linux the engine is native: instead of a WinDivert-style driver the kernel's
+**netfilter/NFQUEUE** subsystem does the interception and `nfqws` does the work.
+Unwall wraps that engine with carrier presets, hostlist management, encrypted
+DNS and diagnostics.
 
-On Linux the engine itself is native: instead of the WinDivert driver the kernel's
-**netfilter/NFQUEUE** subsystem is used, and `nfqws` runs in place of `winws.exe`.
-This project wraps that engine with Turkey-specific strategies, hostlist
-management, a systemd service, encrypted DNS and a GTK4 interface.
+Carrier presets currently ship for **Turkey** (the project grew out of
+[zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey)); adding
+your own country is a one-line change in
+[`lib/strategies.conf`](lib/strategies.conf) and pull requests are welcome.
 
 ## Features
 
 - **Two engines**: the classic `nfqws` (zapret) and the new LUA-based `nfqws2`
   (zapret2).
-- **Ready-made strategies**: Türk Telekom (+alternative), Superonline
-  (+alternative), Kablonet, Vodafone, Turkcell/Telekom mobile, plus
+- **Ready-made strategies**: carrier presets (currently `TR ·` Türk Telekom,
+  Superonline, Kablonet, Vodafone, Turkcell/Telekom mobile) plus
   carrier-independent generic profiles — usable without running blockcheck.
-  Sourced from the Windows version of this project and from splitwire-turkey's
-  `presets.txt`.
 - **Blockcheck**: searches for a strategy that works on your ISP and writes the
   result straight into the configuration.
 - **Hostlist / excludelist**: only blocked domains go through the engine, so the
@@ -42,7 +43,7 @@ management, a systemd service, encrypted DNS and a GTK4 interface.
   the Windows version, and it is fully reversible.
 - **Diagnostics**: DNS interference check, conflicting tool and queue detection.
 - **English and Turkish**: the interface picks your locale automatically and can
-  be switched from the menu (Language); `ZT_LANG=en` / `ZT_LANG=tr` override it.
+  be switched from the menu (Language); `UW_LANG=en` / `UW_LANG=tr` override it.
 - **Privilege separation**: the GUI runs as your normal user; privileged work
   goes through a single helper script via polkit.
 
@@ -66,10 +67,16 @@ autostart, strategy selection and gateway mode are all done from the GUI.
 
 Options: `--yes` (no questions), `--no-deps`, `--no-build`, `PREFIX=/usr`.
 
-After installation, **Zapret Turkey** appears in your application menu (Network
-category); launch it from there or with the `zapret-turkey` command.
+After installation, **Unwall** appears in your application menu (Network
+category); launch it from there or with the `unwall` command.
 
 To install as an Arch/CachyOS package: `cd packaging && makepkg -si`
+
+**Upgrading from `zapret-turkey`** (the previous name of this project): just run
+`./install.sh`. It disables the old service, moves `/etc/zapret-turkey` and
+`/opt/zapret-turkey` to the new paths (so the engines are not rebuilt), keeps
+your encrypted DNS setup, and removes the old binaries, unit, polkit policy and
+menu entry.
 
 To remove everything: `./uninstall.sh` (it also asks for the password only
 once). It stops and disables the service,
@@ -77,7 +84,7 @@ drops the nftables rules, reverts the encrypted DNS configuration (restoring any
 `dnscrypt-proxy.toml` it replaced), deletes the program files, the settings and
 lists, the compiled engines and source tree, and the logs — then verifies that
 nothing is left behind. Use `--yes` to skip the confirmation, `--keep-config` to
-preserve `/etc/zapret-turkey`, and `--purge-deps` to remove the `dnscrypt-proxy`
+preserve `/etc/unwall`, and `--purge-deps` to remove the `dnscrypt-proxy`
 package as well. Other dependencies (nftables, gtk4, luajit …) are left alone
 because other software may need them.
 
@@ -99,8 +106,8 @@ sudo dnf install nftables python3-gobject libadwaita gtk4 polkit bind-utils gcc 
 </details>
 
 `build` clones `bol-van/zapret` and `bol-van/zapret2` into
-`/opt/zapret-turkey/src` and compiles the `nfqws` / `nfqws2` binaries. Run
-`sudo zapret-turkeyctl build` later to update the engines.
+`/opt/unwall/src` and compiles the `nfqws` / `nfqws2` binaries. Run
+`sudo unwallctl build` later to update the engines.
 
 ## Usage
 
@@ -116,32 +123,32 @@ the service, DNS, firewall rules) ask for a password through polkit.
 From the terminal:
 
 ```bash
-sudo zapret-turkeyctl start STRATEGY=superonline ENGINE=zapret2
+sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 ```
 
 | Command | What it does |
 |---|---|
-| `zapret-turkeyctl status` | current state (key=value) |
-| `zapret-turkeyctl strategies [engine]` | list ready-made strategies |
-| `zapret-turkeyctl config get\|set` | read / write settings |
-| `sudo zapret-turkeyctl start\|stop\|restart` | run / stop the engine |
-| `sudo zapret-turkeyctl enable\|disable` | start at boot |
-| `sudo zapret-turkeyctl blockcheck [engine]` | ISP analysis |
-| `zapret-turkeyctl dnscheck [domain]` | DNS interference check |
-| `sudo zapret-turkeyctl dns enable\|disable` | turn encrypted DNS (DoT/DoH) on / off |
-| `zapret-turkeyctl dns status\|test` | encrypted DNS state / test |
-| `zapret-turkeyctl doctor` | environment and conflict diagnostics |
-| `sudo zapret-turkeyctl disable-conflicts` | shut down conflicting DPI tools |
-| `zapret-turkeyctl print-cmd`, `print-nft` | show the generated command and rules |
+| `unwallctl status` | current state (key=value) |
+| `unwallctl strategies [engine]` | list ready-made strategies |
+| `unwallctl config get\|set` | read / write settings |
+| `sudo unwallctl start\|stop\|restart` | run / stop the engine |
+| `sudo unwallctl enable\|disable` | start at boot |
+| `sudo unwallctl blockcheck [engine]` | ISP analysis |
+| `unwallctl dnscheck [domain]` | DNS interference check |
+| `sudo unwallctl dns enable\|disable` | turn encrypted DNS (DoT/DoH) on / off |
+| `unwallctl dns status\|test` | encrypted DNS state / test |
+| `unwallctl doctor` | environment and conflict diagnostics |
+| `sudo unwallctl disable-conflicts` | shut down conflicting DPI tools |
+| `unwallctl print-cmd`, `print-nft` | show the generated command and rules |
 
-Configuration: `/etc/zapret-turkey/zapret-turkey.conf`
-Lists: `/etc/zapret-turkey/{hostlist,excludelist,autohostlist}.txt`
-Logs: `journalctl -u zapret-turkey -f` and `/var/log/zapret-turkey/`
+Configuration: `/etc/unwall/unwall.conf`
+Lists: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
+Logs: `journalctl -u unwall -f` and `/var/log/unwall/`
 
 ## Encrypted DNS (the YogaDNS equivalent)
 
 If your ISP tampers with DNS, zapret alone is not enough. The **Şifreli DNS**
-(encrypted DNS) switch in the GUI, or the `zapret-turkeyctl dns` command, sets
+(encrypted DNS) switch in the GUI, or the `unwallctl dns` command, sets
 this up for you — no manual file editing.
 
 | Method | Transport | Notes |
@@ -150,26 +157,26 @@ this up for you — no manual file editing.
 | **DoT** — `systemd-resolved` | 853/tcp | No extra package needed, but 853 is a separate port that some ISPs close. |
 
 ```bash
-sudo zapret-turkeyctl dns enable cloudflare auto
+sudo unwallctl dns enable cloudflare auto
 ```
 
 `auto` picks DoH when `dnscrypt-proxy` is installed and falls back to DoT.
 Providers: `cloudflare`, `google` or `quad9`.
 
 ```bash
-zapret-turkeyctl dns test
-sudo zapret-turkeyctl dns disable
+unwallctl dns test
+sudo unwallctl dns disable
 ```
 
 What happens under the hood:
 
-- **DoT**: a drop-in at `/etc/systemd/resolved.conf.d/90-zapret-turkey.conf`
+- **DoT**: a drop-in at `/etc/systemd/resolved.conf.d/90-unwall.conf`
   with `DNSOverTLS=yes` and the provider's servers. `Domains=~.` makes these
   win over the ISP servers handed out by DHCP; links with their own search
   domains (VPN, Tailscale) are unaffected.
 - **DoH**: `dnscrypt-proxy` runs as a DoH client on `127.0.0.1:5300` and
   `systemd-resolved` uses it as its upstream. An existing
-  `dnscrypt-proxy.toml` is backed up as `.zapret-turkey.bak` before being
+  `dnscrypt-proxy.toml` is backed up as `.unwall.bak` before being
   replaced; `dns disable` restores it.
 
 `dns disable` reverts both changes — the uninstall script calls it too.
@@ -198,13 +205,13 @@ chain by default, you need to allow forwarding.
 | `winws.exe` / `winws2.exe` | `nfqws` / `nfqws2` |
 | WinDivert driver | netfilter NFQUEUE (`nfnetlink_queue`) |
 | `--wf-tcp` / `--wf-udp` / `--wf-l3` | nftables rules (`queue num ... bypass`) |
-| `sc create ZapretService` | `zapret-turkey.service` (systemd) |
+| `sc create ZapretService` | `unwall.service` (systemd) |
 | UAC / `#RequireAdmin` | polkit + `pkexec` (only the helper script is elevated) |
 | Npcap + `go-pcap2socks` | `ip_forward` + `nft masquerade` |
 | YogaDNS (installed by hand) | built-in DoH/DoT via `dns enable` (`dnscrypt-proxy` / `systemd-resolved`) |
 | `nslookup`, `ipconfig /flushdns` | `dig`, `resolvectl flush-caches` |
 | GoodbyeDPI conflict check | `nfqws`/`tpws`/`byedpi`/TUN and queue conflicts (`doctor`) |
-| `config.ini` | `/etc/zapret-turkey/zapret-turkey.conf` |
+| `config.ini` | `/etc/unwall/unwall.conf` |
 | AutoIt GUI | GTK4 + libadwaita (Python) |
 
 The strategy parameters themselves (`--dpi-desync=…`, `--lua-desync=…`,
@@ -214,12 +221,12 @@ traffic into the engine differs.
 ## Project layout
 
 ```
-bin/zapret-turkeyctl          all privileged work (CLI + polkit target)
-bin/zapret-turkey             GUI launcher
-gui/zapret_turkey_gui.py      GTK4 / libadwaita interface
+bin/unwallctl          all privileged work (CLI + polkit target)
+bin/unwall             GUI launcher
+gui/unwall_gui.py      GTK4 / libadwaita interface
 lib/strategies.conf           ready-made strategy profiles
-etc/zapret-turkey.conf        default configuration
-systemd/zapret-turkey.service systemd unit
+etc/unwall.conf        default configuration
+systemd/unwall.service systemd unit
 polkit/…policy                privilege escalation policy
 packaging/PKGBUILD            Arch package
 docs/screenshots/             interface screenshots
@@ -228,14 +235,14 @@ docs/screenshots/             interface screenshots
 ## Troubleshooting
 
 ```bash
-zapret-turkeyctl doctor
+unwallctl doctor
 ```
 
 Run the GUI from a terminal and everything is logged to the console; for more
 detail:
 
 ```bash
-ZT_DEBUG=1 zapret-turkey
+UW_DEBUG=1 unwall
 ```
 
 The application is single-instance: if a window opened from the menu is already
@@ -243,15 +250,15 @@ running, launching it from a terminal only raises that window and prints no
 logs. To get a separate instance while debugging:
 
 ```bash
-ZT_NO_UNIQUE=1 ZT_DEBUG=1 zapret-turkey
+UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
 ```
 
-- **The engine will not start**: `journalctl -u zapret-turkey -n 50`
+- **The engine will not start**: `journalctl -u unwall -n 50`
 - **My strategy selection reverts**: the selection is only pending until you
   press **AYARLARI UYGULA** / **ZAPRET'İ BAŞLAT**; the status line shows it as
   `uygulanmadı → ...`.
 - **Nothing changed**: check that the rules are loaded with
-  `sudo nft list table ip zapret_turkey`; if the hostlist mode is `manual`, make
+  `sudo nft list table ip unwall`; if the hostlist mode is `manual`, make
   sure the domain is in the list.
 - **QUIC/HTTP3 sites broke**: set `PORTS_UDP=` (empty) in the configuration.
 - **Another DPI tool is running**: `byedpi`, `tpws`, the upstream

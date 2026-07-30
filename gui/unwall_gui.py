@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Zapret Linux Türkiye - GTK4/libadwaita kontrol paneli.
+"""Unwall - GTK4/libadwaita control panel for the zapret/nfqws DPI bypass engine.
 
 Arayüz normal kullanıcı olarak çalışır. Ayrıcalık gerektiren her iş
-`pkexec zapret-turkeyctl ...` üzerinden yapılır; bu betik hiçbir zaman
+`pkexec unwallctl ...` üzerinden yapılır; bu betik hiçbir zaman
 root olarak çalıştırılmamalıdır.
 """
 
@@ -19,19 +19,19 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-APP_ID = "org.zapret.turkey"
+APP_ID = "io.github.WinTone01.Unwall"
 VERSION = "1.0.0"
 
 CONFIG_DIR = os.path.join(
     os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
-    "zapret-turkey",
+    "unwall",
 )
 CONFIG_FILE = os.path.join(CONFIG_DIR, "gui.conf")
 
 
 def _detect_lang():
-    """Dil sırası: ZT_LANG > kayıtlı seçim > yerel ayar > İngilizce."""
-    env = os.environ.get("ZT_LANG", "").lower()
+    """Dil sırası: UW_LANG > kayıtlı seçim > yerel ayar > İngilizce."""
+    env = os.environ.get("UW_LANG", "").lower()
     if env.startswith(("tr", "en")):
         return env[:2]
     try:
@@ -116,7 +116,7 @@ TR = {
     'Refresh': 'Yenile',
     'Route console, TV and similar devices through this machine': 'Konsol, TV vb. cihazları bu makine üzerinden geçir',
     'SERVICE MODE ACTIVE': 'SERVİS MODU AKTİF',
-    'START ZAPRET': "ZAPRET'İ BAŞLAT",
+    'START': 'BAŞLAT',
     'STOP': 'DURDUR',
     'Service': 'Servis',
     'Share with devices on your network': 'Ağdaki Cihazlarla Paylaş',
@@ -127,7 +127,7 @@ TR = {
     'Strategy': 'Strateji',
     'Test': 'Sına',
     'The operation failed (see the output)': 'İşlem hata ile bitti (çıktıya bakın)',
-    'Zapret Turkey': 'Zapret Türkiye',
+    'Unwall': 'Unwall',
     'build engines': 'motorları derle',
     'disable encrypted DNS': 'şifreli DNS kapat',
     'enable encrypted DNS': 'şifreli DNS aç',
@@ -152,14 +152,14 @@ def T(text):
     return TR.get(text, text) if LANG == "tr" else text
 
 # Terminalden çalıştırıldığında her şey konsola aksın. Ayrıntı için:
-#   ZT_DEBUG=1 zapret-turkey
+#   UW_DEBUG=1 unwall
 logging.basicConfig(
-    level=logging.DEBUG if os.environ.get("ZT_DEBUG") else logging.INFO,
+    level=logging.DEBUG if os.environ.get("UW_DEBUG") else logging.INFO,
     format="%(asctime)s %(levelname)-7s %(message)s",
     datefmt="%H:%M:%S",
     stream=sys.stderr,
 )
-log = logging.getLogger("zapret-turkey")
+log = logging.getLogger("unwall")
 
 
 def _excepthook(exc_type, exc, tb):
@@ -169,7 +169,8 @@ def _excepthook(exc_type, exc, tb):
 
 sys.excepthook = _excepthook
 
-CTL = os.environ.get("ZT_CTL", shutil.which("zapret-turkeyctl") or "/usr/local/bin/zapret-turkeyctl")
+CTL = os.environ.get("UW_CTL", shutil.which("unwallctl") or "/usr/local/bin/unwallctl")
+ETC_DIR = os.environ.get("UW_ETC", "/etc/unwall")
 
 HOSTLIST_MODES = [
     ("auto", T("Automatic (zapret learns)")),
@@ -222,7 +223,7 @@ GATEWAY_HELP = GATEWAY_HELP_TR if LANG == "tr" else GATEWAY_HELP_EN
 def ctl(*args, timeout=15):
     """Yetki gerektirmeyen ctl çağrısı. (çıkış kodu, çıktı) döner."""
     try:
-        env = dict(os.environ, ZT_LANG=LANG)
+        env = dict(os.environ, UW_LANG=LANG)
         p = subprocess.run(
             [CTL, f"--lang={LANG}", *args],
             capture_output=True, text=True, timeout=timeout, env=env,
@@ -249,7 +250,7 @@ def parse_kv(text):
 
 class Window(Adw.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title=T("Zapret Turkey"))
+        super().__init__(application=app, title=T("Unwall"))
         self.set_default_size(520, 760)
         self.status = {}
         self.config = {}
@@ -331,7 +332,7 @@ class Window(Adw.ApplicationWindow):
         box.append(self.lbl_state)
         box.append(self.lbl_sub)
 
-        self.btn_main = Gtk.Button(label=T("START ZAPRET"))
+        self.btn_main = Gtk.Button(label=T("START"))
         self.btn_main.add_css_class("suggested-action")
         self.btn_main.add_css_class("pill")
         self.btn_main.set_size_request(-1, 48)
@@ -382,9 +383,7 @@ class Window(Adw.ApplicationWindow):
         self.row_hostlist.connect("notify::selected", lambda *_: self.mark_dirty())
         g_filter.add(self.row_hostlist)
 
-        row_edit = Adw.ActionRow(
-            title=T("Edit lists"), subtitle="/etc/zapret-turkey"
-        )
+        row_edit = Adw.ActionRow(title=T("Edit lists"), subtitle=ETC_DIR)
         btn_open = Gtk.Button(label=T("Open folder"), valign=Gtk.Align.CENTER)
         btn_open.connect("clicked", self.on_open_conf_dir)
         row_edit.add_suffix(btn_open)
@@ -497,7 +496,7 @@ class Window(Adw.ApplicationWindow):
         self._dirty = True
         log.debug("pending change: %s", " ".join(self.pending_config()))
         self.btn_main.set_label(
-            T("APPLY SETTINGS") if self.status.get("running") == "1" else T("START ZAPRET")
+            T("APPLY SETTINGS") if self.status.get("running") == "1" else T("START")
         )
 
     def pending_config(self):
@@ -649,10 +648,10 @@ class Window(Adw.ApplicationWindow):
         self.btn_main.set_sensitive(ready)
         if self._dirty:
             self.btn_main.set_label(
-                T("APPLY SETTINGS") if running else T("START ZAPRET")
+                T("APPLY SETTINGS") if running else T("START")
             )
         else:
-            self.btn_main.set_label(T("STOP") if running else T("START ZAPRET"))
+            self.btn_main.set_label(T("STOP") if running else T("START"))
         if running:
             self.btn_main.remove_css_class("suggested-action")
             self.btn_main.add_css_class("destructive-action")
@@ -857,20 +856,20 @@ class Window(Adw.ApplicationWindow):
         Window(app).present()
 
     def on_open_conf_dir(self, *_):
-        Gio.AppInfo.launch_default_for_uri("file:///etc/zapret-turkey", None)
+        Gio.AppInfo.launch_default_for_uri(f"file://{ETC_DIR}", None)
 
     def on_about(self, *_):
         kwargs = dict(
-            application_name=T("Zapret Turkey"),
+            application_name=T("Unwall"),
             version=VERSION,
             comments=T(
                 "Linux control panel for the bol-van/zapret and zapret2 engines.\n"
                 "The Linux counterpart of the Windows version "
                 "(zapret-win-bundle + AutoIt)."
             ),
-            website="https://github.com/bol-van/zapret",
+            website="https://github.com/WinTone01/unwall",
             license_type=Gtk.License.MIT_X11,
-            developers=["Zapret Linux Turkey contributors"],
+            developers=["Unwall contributors"],
         )
         if hasattr(Adw, "AboutDialog"):
             Adw.AboutDialog(**kwargs).present(self)
@@ -881,9 +880,9 @@ class Window(Adw.ApplicationWindow):
 class App(Adw.Application):
     def __init__(self):
         flags = Gio.ApplicationFlags.DEFAULT_FLAGS
-        # ZT_NO_UNIQUE=1 ile her çalıştırma kendi penceresini açar; hata
+        # UW_NO_UNIQUE=1 ile her çalıştırma kendi penceresini açar; hata
         # ayıklarken çalışan örneğe devredilmesini istemediğimizde işe yarar.
-        if os.environ.get("ZT_NO_UNIQUE"):
+        if os.environ.get("UW_NO_UNIQUE"):
             flags |= Gio.ApplicationFlags.NON_UNIQUE
         super().__init__(application_id=APP_ID, flags=flags)
 
@@ -899,7 +898,7 @@ def main():
                   "through pkexec.")
         return 1
 
-    log.info("Zapret Turkey %s starting (lang: %s, ctl: %s)", VERSION, LANG, CTL)
+    log.info("Unwall %s starting (lang: %s, ctl: %s)", VERSION, LANG, CTL)
     if not os.path.exists(CTL):
         log.error("%s not found. Run: sudo ./install.sh", CTL)
 
@@ -911,9 +910,9 @@ def main():
         return 1
     if app.get_is_remote():
         log.warning(
-            "a Zapret Turkey window is already running; it will be raised "
+            "an Unwall window is already running; it will be raised "
             "instead. To see logs in this terminal, close it first or start "
-            "with ZT_NO_UNIQUE=1 zapret-turkey."
+            "with UW_NO_UNIQUE=1 unwall."
         )
     return app.run(None)
 

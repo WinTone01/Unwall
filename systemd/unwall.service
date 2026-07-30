@@ -1,20 +1,20 @@
 [Unit]
-Description=Zapret Linux Türkiye - DPI atlatma motoru
+Description=Unwall - DPI bypass engine (zapret/nfqws)
 Documentation=https://github.com/bol-van/zapret
 After=network.target nss-lookup.target
 Wants=network.target
-ConditionPathExists=@ETCDIR@/zapret-turkey.conf
+ConditionPathExists=@ETCDIR@/unwall.conf
 
 [Service]
 Type=exec
-ExecStartPre=@BINDIR@/zapret-turkeyctl nft-apply
-ExecStart=@BINDIR@/zapret-turkeyctl run-engine
-ExecStopPost=@BINDIR@/zapret-turkeyctl nft-flush
+ExecStartPre=@BINDIR@/unwallctl nft-apply
+ExecStart=@BINDIR@/unwallctl run-engine
+ExecStopPost=@BINDIR@/unwallctl nft-flush
 Restart=on-failure
 RestartSec=3
 KillMode=mixed
 
-# nfqws NFQUEUE'ya bağlanmak ve ham paket üretmek için ağ yetkileri ister.
+# nfqws needs network privileges to bind NFQUEUE and craft raw packets.
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_MODULE CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID
 ProtectHome=yes
 ProtectSystem=strict

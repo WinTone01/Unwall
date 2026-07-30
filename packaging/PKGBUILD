@@ -1,69 +1,69 @@
 # Maintainer: Zapret Linux Türkiye
-pkgname=zapret-turkey
+pkgname=unwall
 pkgver=1.0.0
 pkgrel=1
-pkgdesc="Türkiye için zapret/zapret2 DPI atlatma kontrol paneli (GTK4)"
+pkgdesc="GTK4 control panel for the zapret/nfqws DPI bypass engine"
 arch=('any')
-url="https://github.com/wintone01/zapret-linux-turkey"
+url="https://github.com/WinTone01/unwall"
 license=('MIT')
 depends=('nftables' 'python-gobject' 'libadwaita' 'gtk4' 'polkit' 'systemd' 'bind')
 makedepends=('git')
 optdepends=(
-	'luajit: zapret2 (LUA) motorunu derlemek için'
-	'libnetfilter_queue: motorları derlemek için'
-	'libnfnetlink: motorları derlemek için'
-	'libmnl: motorları derlemek için'
-	'dnscrypt-proxy: şifreli DNS (YogaDNS karşılığı)'
+	'luajit: to build the zapret2 (LUA) engine'
+	'libnetfilter_queue: to build the engines'
+	'libnfnetlink: to build the engines'
+	'libmnl: to build the engines'
+	'dnscrypt-proxy: encrypted DNS (DoH)'
 )
 backup=(
-	'etc/zapret-turkey/zapret-turkey.conf'
-	'etc/zapret-turkey/hostlist.txt'
-	'etc/zapret-turkey/excludelist.txt'
+	'etc/unwall/unwall.conf'
+	'etc/unwall/hostlist.txt'
+	'etc/unwall/excludelist.txt'
 )
-install=zapret-turkey.install
+install=unwall.install
 source=()
 
 package() {
 	cd "$startdir/.."
 
-	install -Dm755 bin/zapret-turkeyctl "$pkgdir/usr/bin/zapret-turkeyctl"
+	install -Dm755 bin/unwallctl "$pkgdir/usr/bin/unwallctl"
 	sed -i \
-		-e 's|^ZT_LIB=.*|ZT_LIB="${ZT_LIB:-/usr/lib/zapret-turkey}"|' \
-		-e 's|^ZT_ETC=.*|ZT_ETC="${ZT_ETC:-/etc/zapret-turkey}"|' \
-		-e 's|^ZT_OPT=.*|ZT_OPT="${ZT_OPT:-/opt/zapret-turkey}"|' \
-		-e 's|^ZT_LOG=.*|ZT_LOG="${ZT_LOG:-/var/log/zapret-turkey}"|' \
-		"$pkgdir/usr/bin/zapret-turkeyctl"
+		-e 's|^UW_LIB=.*|UW_LIB="${UW_LIB:-/usr/lib/unwall}"|' \
+		-e 's|^UW_ETC=.*|UW_ETC="${UW_ETC:-/etc/unwall}"|' \
+		-e 's|^UW_OPT=.*|UW_OPT="${UW_OPT:-/opt/unwall}"|' \
+		-e 's|^UW_LOG=.*|UW_LOG="${UW_LOG:-/var/log/unwall}"|' \
+		"$pkgdir/usr/bin/unwallctl"
 
-	install -Dm755 bin/zapret-turkey "$pkgdir/usr/bin/zapret-turkey"
-	sed -i 's|^ZT_LIB=.*|ZT_LIB="${ZT_LIB:-/usr/lib/zapret-turkey}"|' \
-		"$pkgdir/usr/bin/zapret-turkey"
+	install -Dm755 bin/unwall "$pkgdir/usr/bin/unwall"
+	sed -i 's|^UW_LIB=.*|UW_LIB="${UW_LIB:-/usr/lib/unwall}"|' \
+		"$pkgdir/usr/bin/unwall"
 
-	install -Dm644 gui/zapret_turkey_gui.py "$pkgdir/usr/lib/zapret-turkey/zapret_turkey_gui.py"
-	install -Dm644 lib/strategies.conf "$pkgdir/usr/lib/zapret-turkey/strategies.conf"
+	install -Dm644 gui/unwall_gui.py "$pkgdir/usr/lib/unwall/unwall_gui.py"
+	install -Dm644 lib/strategies.conf "$pkgdir/usr/lib/unwall/strategies.conf"
 
-	install -Dm644 etc/zapret-turkey.conf "$pkgdir/etc/zapret-turkey/zapret-turkey.conf"
-	install -Dm644 hostlist.txt "$pkgdir/etc/zapret-turkey/hostlist.txt"
-	install -Dm644 excludelist.txt "$pkgdir/etc/zapret-turkey/excludelist.txt"
-	install -Dm644 autohostlist.txt "$pkgdir/etc/zapret-turkey/autohostlist.txt"
+	install -Dm644 etc/unwall.conf "$pkgdir/etc/unwall/unwall.conf"
+	install -Dm644 hostlist.txt "$pkgdir/etc/unwall/hostlist.txt"
+	install -Dm644 excludelist.txt "$pkgdir/etc/unwall/excludelist.txt"
+	install -Dm644 autohostlist.txt "$pkgdir/etc/unwall/autohostlist.txt"
 
-	sed -e 's|@BINDIR@|/usr/bin|g' -e 's|@ETCDIR@|/etc/zapret-turkey|g' \
-		-e 's|@LOGDIR@|/var/log/zapret-turkey|g' systemd/zapret-turkey.service \
-		> "$srcdir/zapret-turkey.service"
-	install -Dm644 "$srcdir/zapret-turkey.service" \
-		"$pkgdir/usr/lib/systemd/system/zapret-turkey.service"
+	sed -e 's|@BINDIR@|/usr/bin|g' -e 's|@ETCDIR@|/etc/unwall|g' \
+		-e 's|@LOGDIR@|/var/log/unwall|g' systemd/unwall.service \
+		> "$srcdir/unwall.service"
+	install -Dm644 "$srcdir/unwall.service" \
+		"$pkgdir/usr/lib/systemd/system/unwall.service"
 
-	sed 's|@BINDIR@|/usr/bin|g' polkit/org.zapret.turkey.policy \
-		> "$srcdir/org.zapret.turkey.policy"
-	install -Dm644 "$srcdir/org.zapret.turkey.policy" \
-		"$pkgdir/usr/share/polkit-1/actions/org.zapret.turkey.policy"
+	sed 's|@BINDIR@|/usr/bin|g' polkit/io.github.WinTone01.Unwall.policy \
+		> "$srcdir/io.github.WinTone01.Unwall.policy"
+	install -Dm644 "$srcdir/io.github.WinTone01.Unwall.policy" \
+		"$pkgdir/usr/share/polkit-1/actions/io.github.WinTone01.Unwall.policy"
 
-	install -Dm644 share/org.zapret.turkey.desktop \
-		"$pkgdir/usr/share/applications/org.zapret.turkey.desktop"
-	install -Dm644 share/zapret-turkey.svg \
-		"$pkgdir/usr/share/icons/hicolor/scalable/apps/zapret-turkey.svg"
+	install -Dm644 share/io.github.WinTone01.Unwall.desktop \
+		"$pkgdir/usr/share/applications/io.github.WinTone01.Unwall.desktop"
+	install -Dm644 share/io.github.WinTone01.Unwall.svg \
+		"$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.WinTone01.Unwall.svg"
 	install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 	install -Dm644 README.tr.md "$pkgdir/usr/share/doc/$pkgname/README.tr.md"
 
 	echo 'nfnetlink_queue' > "$srcdir/modules.conf"
-	install -Dm644 "$srcdir/modules.conf" "$pkgdir/usr/lib/modules-load.d/zapret-turkey.conf"
+	install -Dm644 "$srcdir/modules.conf" "$pkgdir/usr/lib/modules-load.d/unwall.conf"
 }

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>Unwall</vendor>
+  <vendor_url>https://github.com/WinTone01/unwall</vendor_url>
+
+  <action id="io.github.WinTone01.Unwall.manage">
+    <description>Manage the Unwall engine</description>
+    <description xml:lang="tr">Unwall motorunu yönet</description>
+    <message>Authentication is required to change Unwall network settings</message>
+    <message xml:lang="tr">Unwall ağ ayarlarını değiştirmek için kimlik doğrulaması gerekiyor</message>
+    <icon_name>network-transmit-receive</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@BINDIR@/unwallctl</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+
+</policyconfig>

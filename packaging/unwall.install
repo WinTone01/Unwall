@@ -1,0 +1,29 @@
+post_install() {
+	cat <<'MSG'
+
+Unwall is installed. The engines are not built yet:
+
+    sudo unwallctl build
+
+Then start the "Unwall" application from your menu, or:
+
+    unwallctl doctor
+    sudo unwallctl start
+
+MSG
+}
+
+post_upgrade() {
+	systemctl daemon-reload 2>/dev/null || true
+	echo "To update the engines: sudo unwallctl build"
+}
+
+pre_remove() {
+	systemctl disable --now unwall.service 2>/dev/null || true
+	unwallctl nft-flush 2>/dev/null || true
+	unwallctl dns disable 2>/dev/null || true
+}
+
+post_remove() {
+	echo "Settings in /etc/unwall and engines in /opt/unwall were kept."
+}

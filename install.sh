@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Zapret Linux Türkiye kurulumu
+# Unwall kurulumu / installation
 #
 # Yalnızca uygulamayı kurar: paketleri kurar, dosyaları yerleştirir ve
 # motorları derler. Hiçbir servisi başlatmaz, hiçbir sistem ayarını
@@ -16,17 +16,17 @@ set -euo pipefail
 
 PREFIX="${PREFIX:-/usr/local}"
 BINDIR="$PREFIX/bin"
-LIBDIR="$PREFIX/lib/zapret-turkey"
-ETCDIR="/etc/zapret-turkey"
-OPTDIR="/opt/zapret-turkey"
-LOGDIR="/var/log/zapret-turkey"
+LIBDIR="$PREFIX/lib/unwall"
+ETCDIR="/etc/unwall"
+OPTDIR="/opt/unwall"
+LOGDIR="/var/log/unwall"
 UNITDIR="/etc/systemd/system"
 POLKITDIR="/usr/share/polkit-1/actions"
 DESKTOPDIR="/usr/share/applications"
 ICONDIR="/usr/share/icons/hicolor/scalable/apps"
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
-CTL="$BINDIR/zapret-turkeyctl"
+CTL="$BINDIR/unwallctl"
 
 # --- seçenekler ---
 ASSUME_YES=0
@@ -152,6 +152,63 @@ else
 	step "bağımlılık kurulumu atlandı (--no-deps)"
 fi
 
+# =====================================================================
+# 1b. Eski kurulumdan taşıma (zapret-turkey -> unwall)
+# =====================================================================
+
+LEGACY_ETC="/etc/zapret-turkey"
+LEGACY_OPT="/opt/zapret-turkey"
+
+if [ -e "$LEGACY_ETC" ] || [ -e "$LEGACY_OPT" ] ||
+   [ -e /etc/systemd/system/zapret-turkey.service ] ||
+   [ -x /usr/local/bin/zapret-turkeyctl ] || [ -x /usr/bin/zapret-turkeyctl ]; then
+	step "eski kurulum (zapret-turkey) taşınıyor"
+
+	# eski servis ve kuralları kapat
+	systemctl disable --now zapret-turkey.service >/dev/null 2>&1 || true
+	nft delete table ip zapret_turkey 2>/dev/null || true
+	nft delete table inet zapret_turkey 2>/dev/null || true
+
+	# ayarlar ve listeler
+	if [ -d "$LEGACY_ETC" ] && [ ! -d "$ETCDIR" ]; then
+		mv "$LEGACY_ETC" "$ETCDIR"
+		[ -f "$ETCDIR/zapret-turkey.conf" ] && mv "$ETCDIR/zapret-turkey.conf" "$ETCDIR/unwall.conf"
+		note "ayarlar taşındı: $LEGACY_ETC -> $ETCDIR"
+	fi
+
+	# derlenmiş motorlar ve kaynak ağacı (yeniden derlemeye gerek kalmasın)
+	if [ -d "$LEGACY_OPT" ] && [ ! -d "$OPTDIR" ]; then
+		mv "$LEGACY_OPT" "$OPTDIR"
+		note "motorlar taşındı: $LEGACY_OPT -> $OPTDIR"
+	fi
+
+	# eski program dosyaları
+	rm -f /usr/local/bin/zapret-turkeyctl /usr/bin/zapret-turkeyctl \
+	      /usr/local/bin/zapret-turkey /usr/bin/zapret-turkey
+	rm -rf /usr/local/lib/zapret-turkey /usr/lib/zapret-turkey
+	rm -f /etc/systemd/system/zapret-turkey.service /usr/lib/systemd/system/zapret-turkey.service
+	rm -f /usr/share/polkit-1/actions/org.zapret.turkey.policy
+	rm -f /usr/share/applications/org.zapret.turkey.desktop /usr/share/applications/zapret-turkey.desktop
+	rm -f /usr/share/icons/hicolor/scalable/apps/zapret-turkey.svg
+	rm -f /etc/modules-load.d/zapret-turkey.conf
+	rm -rf /var/log/zapret-turkey
+	systemctl daemon-reload >/dev/null 2>&1 || true
+
+	# şifreli DNS drop-in'i yeni adla yaz
+	if [ -f /etc/systemd/resolved.conf.d/90-zapret-turkey.conf ]; then
+		mv /etc/systemd/resolved.conf.d/90-zapret-turkey.conf \
+		   /etc/systemd/resolved.conf.d/90-unwall.conf
+		sed -i 's/zapret-turkey/unwall/g' /etc/systemd/resolved.conf.d/90-unwall.conf
+		note "şifreli DNS ayarı korundu"
+	fi
+	if [ -f /etc/dnscrypt-proxy/dnscrypt-proxy.toml.zapret-turkey.bak ]; then
+		mv /etc/dnscrypt-proxy/dnscrypt-proxy.toml.zapret-turkey.bak \
+		   /etc/dnscrypt-proxy/dnscrypt-proxy.toml.unwall.bak
+	fi
+
+	note "taşıma tamam; servisi arayüzden yeniden etkinleştirin"
+fi
+
 step "ortam doğrulanıyor"
 missing=""
 for c in nft systemctl python3 git make cc pkexec curl; do
@@ -173,25 +230,25 @@ fi
 step "dosyalar kopyalanıyor"
 install -d "$BINDIR" "$LIBDIR" "$ETCDIR" "$OPTDIR" "$LOGDIR"
 
-install -m 0755 "$SRC/bin/zapret-turkeyctl" "$CTL"
+install -m 0755 "$SRC/bin/unwallctl" "$CTL"
 sed -i \
-	-e "s|^ZT_LIB=.*|ZT_LIB=\"\${ZT_LIB:-$LIBDIR}\"|" \
-	-e "s|^ZT_ETC=.*|ZT_ETC=\"\${ZT_ETC:-$ETCDIR}\"|" \
-	-e "s|^ZT_OPT=.*|ZT_OPT=\"\${ZT_OPT:-$OPTDIR}\"|" \
-	-e "s|^ZT_LOG=.*|ZT_LOG=\"\${ZT_LOG:-$LOGDIR}\"|" \
+	-e "s|^UW_LIB=.*|UW_LIB=\"\${UW_LIB:-$LIBDIR}\"|" \
+	-e "s|^UW_ETC=.*|UW_ETC=\"\${UW_ETC:-$ETCDIR}\"|" \
+	-e "s|^UW_OPT=.*|UW_OPT=\"\${UW_OPT:-$OPTDIR}\"|" \
+	-e "s|^UW_LOG=.*|UW_LOG=\"\${UW_LOG:-$LOGDIR}\"|" \
 	"$CTL"
 
-install -m 0755 "$SRC/bin/zapret-turkey" "$BINDIR/zapret-turkey"
-sed -i "s|^ZT_LIB=.*|ZT_LIB=\"\${ZT_LIB:-$LIBDIR}\"|" "$BINDIR/zapret-turkey"
+install -m 0755 "$SRC/bin/unwall" "$BINDIR/unwall"
+sed -i "s|^UW_LIB=.*|UW_LIB=\"\${UW_LIB:-$LIBDIR}\"|" "$BINDIR/unwall"
 
-install -m 0644 "$SRC/gui/zapret_turkey_gui.py" "$LIBDIR/zapret_turkey_gui.py"
+install -m 0644 "$SRC/gui/unwall_gui.py" "$LIBDIR/unwall_gui.py"
 install -m 0644 "$SRC/lib/strategies.conf" "$LIBDIR/strategies.conf"
 
-if [ -f "$ETCDIR/zapret-turkey.conf" ]; then
-	note "mevcut config korunuyor: $ETCDIR/zapret-turkey.conf"
-	install -m 0644 "$SRC/etc/zapret-turkey.conf" "$ETCDIR/zapret-turkey.conf.new"
+if [ -f "$ETCDIR/unwall.conf" ]; then
+	note "mevcut config korunuyor: $ETCDIR/unwall.conf"
+	install -m 0644 "$SRC/etc/unwall.conf" "$ETCDIR/unwall.conf.new"
 else
-	install -m 0644 "$SRC/etc/zapret-turkey.conf" "$ETCDIR/zapret-turkey.conf"
+	install -m 0644 "$SRC/etc/unwall.conf" "$ETCDIR/unwall.conf"
 fi
 for f in hostlist.txt excludelist.txt autohostlist.txt; do
 	if [ -f "$ETCDIR/$f" ]; then
@@ -202,20 +259,20 @@ for f in hostlist.txt excludelist.txt autohostlist.txt; do
 done
 
 sed -e "s|@BINDIR@|$BINDIR|g" -e "s|@ETCDIR@|$ETCDIR|g" -e "s|@LOGDIR@|$LOGDIR|g" \
-	"$SRC/systemd/zapret-turkey.service" > "$UNITDIR/zapret-turkey.service"
-chmod 0644 "$UNITDIR/zapret-turkey.service"
+	"$SRC/systemd/unwall.service" > "$UNITDIR/unwall.service"
+chmod 0644 "$UNITDIR/unwall.service"
 
 install -d "$POLKITDIR"
 sed -e "s|@BINDIR@|$BINDIR|g" \
-	"$SRC/polkit/org.zapret.turkey.policy" > "$POLKITDIR/org.zapret.turkey.policy"
-chmod 0644 "$POLKITDIR/org.zapret.turkey.policy"
+	"$SRC/polkit/io.github.WinTone01.Unwall.policy" > "$POLKITDIR/io.github.WinTone01.Unwall.policy"
+chmod 0644 "$POLKITDIR/io.github.WinTone01.Unwall.policy"
 
 # Uygulama menüsü girdisi ve ikon (KDE/GNOME ortak hicolor teması)
 install -d "$DESKTOPDIR" "$ICONDIR"
-install -m 0644 "$SRC/share/org.zapret.turkey.desktop" "$DESKTOPDIR/org.zapret.turkey.desktop"
-install -m 0644 "$SRC/share/zapret-turkey.svg" "$ICONDIR/zapret-turkey.svg"
+install -m 0644 "$SRC/share/io.github.WinTone01.Unwall.desktop" "$DESKTOPDIR/io.github.WinTone01.Unwall.desktop"
+install -m 0644 "$SRC/share/io.github.WinTone01.Unwall.svg" "$ICONDIR/io.github.WinTone01.Unwall.svg"
 # eski isimle kurulmuş girdi kaldıysa temizle
-rm -f "$DESKTOPDIR/zapret-turkey.desktop"
+rm -f "$DESKTOPDIR/unwall.desktop"
 
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$DESKTOPDIR" || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -qtf /usr/share/icons/hicolor || true
@@ -228,9 +285,9 @@ fi
 
 systemctl daemon-reload || true
 modprobe nfnetlink_queue 2>/dev/null || true
-echo "nfnetlink_queue" > /etc/modules-load.d/zapret-turkey.conf
+echo "nfnetlink_queue" > /etc/modules-load.d/unwall.conf
 note "kuruldu: $CTL"
-note "uygulama menüsüne eklendi: Zapret Türkiye"
+note "uygulama menüsüne eklendi: Unwall"
 
 # =====================================================================
 # 3. Çakışan kurulum
@@ -242,7 +299,7 @@ if systemctl is-enabled --quiet zapret.service 2>/dev/null ||
 	note "sistemde upstream zapret.service etkin. İkisi aynı anda çalışırsa"
 	note "NFQUEUE kuralları çakışır."
 	note "Arayüzdeki uyarı çubuğundaki 'Kapat' düğmesiyle ya da şu komutla"
-	note "kapatabilirsiniz:  sudo zapret-turkeyctl disable-conflicts"
+	note "kapatabilirsiniz:  sudo unwallctl disable-conflicts"
 fi
 
 # =====================================================================
@@ -254,7 +311,7 @@ if [ "$DO_BUILD" = 1 ]; then
 	if "$CTL" build all; then
 		note "motorlar hazır"
 	else
-		warn "derleme başarısız oldu; 'sudo zapret-turkeyctl build' ile tekrar deneyin"
+		warn "derleme başarısız oldu; 'sudo unwallctl build' ile tekrar deneyin"
 	fi
 else
 	step "motor derlemesi atlandı (--no-build)"
@@ -268,10 +325,10 @@ cat <<EOF
 Kurulum tamamlandı. Hiçbir servis başlatılmadı, sistem ayarlarınıza
 dokunulmadı.
 
-Buradan sonrası arayüzden: uygulama menüsünde "Zapret Türkiye"
+Buradan sonrası arayüzden: uygulama menüsünde "Unwall"
 (Ağ / Internet kategorisi) ya da terminalden:
 
-    zapret-turkey
+    unwall
 
 Arayüzden strateji seçip başlatabilir, şifreli DNS'i açabilir, açılışta
 otomatik başlatmayı etkinleştirebilirsiniz.

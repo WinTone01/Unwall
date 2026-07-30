@@ -1,31 +1,36 @@
-# Zapret Linux Türkiye
+# Unwall
 
 **Türkçe** · [English](README.md)
 
-Türk kullanıcılar için DPI (Deep Packet Inspection) tabanlı internet sansürünü
-atlatmaya yarayan [zapret](https://github.com/bol-van/zapret) ve
-[zapret2](https://github.com/bol-van/zapret2) motorlarının Linux kontrol paneli.
+@bol-van'ın DPI (Deep Packet Inspection) atlatma motorları
+[zapret](https://github.com/bol-van/zapret) ve
+[zapret2](https://github.com/bol-van/zapret2) için Linux kontrol paneli.
+Unwall bu motorları masaüstünde gerçekten kullanılabilir hale getirir: systemd
+servisi, nftables kuralları, şifreli DNS, konsollar için ağ geçidi modu ve hiçbir
+zaman root olarak çalışmayan bir GTK4 arayüzü.
 
 <p align="center">
-  <img src="docs/screenshots/gui-tr-top.png" alt="Zapret Türkiye arayüzü - durum, motor, strateji ve şifreli DNS" width="46%">
-  <img src="docs/screenshots/gui-tr-bottom.png" alt="Zapret Türkiye arayüzü - şifreli DNS, ağ geçidi modu ve servis" width="46%">
+  <img src="docs/screenshots/gui-tr-top.png" alt="Unwall - durum, motor, strateji ve şifreli DNS" width="46%">
+  <img src="docs/screenshots/gui-tr-bottom.png" alt="Unwall - şifreli DNS, ağ geçidi modu ve servis" width="46%">
 </p>
 
-Bu proje, [zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey)
-(AutoIt + `zapret-win-bundle`) Windows uygulamasının Linux karşılığıdır.
+Linux'ta motor yerli çalışır: WinDivert benzeri bir sürücü yerine çekirdeğin
+**netfilter/NFQUEUE** altyapısı paketleri yakalar, işi `nfqws` yapar. Unwall bu
+motorun etrafına operatör presetleri, hostlist yönetimi, şifreli DNS ve teşhis
+araçları ekler.
 
-Linux'ta motorun kendisi zaten yerli çalışır: WinDivert sürücüsü yerine çekirdeğin
-**netfilter/NFQUEUE** altyapısı kullanılır, `winws.exe` yerine `nfqws` çalışır.
-Bu proje o motorun etrafına Türkiye'ye özel stratejiler, hostlist yönetimi,
-systemd servisi, şifreli DNS ve GTK4 arayüzü ekler.
+Şu an hazır operatör presetleri **Türkiye** içindir (proje
+[zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey)
+uygulamasından doğdu); başka bir ülke eklemek
+[`lib/strategies.conf`](lib/strategies.conf) dosyasına tek satır eklemekten
+ibarettir.
 
 ## Özellikler
 
 - **Çoklu motor**: klasik `nfqws` (zapret) ve yeni LUA tabanlı `nfqws2` (zapret2).
-- **Hazır stratejiler**: Türk Telekom (+alternatif), Superonline (+alternatif),
-  Kablonet, Vodafone, Turkcell/Telekom mobil ve operatörden bağımsız genel
-  profiller — blockcheck beklemeden denenebilir. Kaynak: bu projenin Windows
-  sürümü ve splitwire-turkey `presets.txt`.
+- **Hazır stratejiler**: operatör presetleri (şimdilik `TR ·` Türk Telekom,
+  Superonline, Kablonet, Vodafone, Turkcell/Telekom mobil) ve operatörden
+  bağımsız genel profiller — blockcheck beklemeden denenebilir.
 - **Blockcheck**: operatörünüz için çalışan stratejiyi otomatik arar, sonucu
   doğrudan yapılandırmaya yazar.
 - **Hostlist / excludelist**: yalnızca engellenen alan adları motordan geçer;
@@ -38,7 +43,7 @@ systemd servisi, şifreli DNS ve GTK4 arayüzü ekler.
   yerine geçer, geri alınabilir.
 - **Teşhis**: DNS müdahalesi kontrolü, çakışan araç/kuyruk tespiti.
 - **Türkçe ve İngilizce**: arayüz dili yerel ayardan seçilir, menüden
-  (Dil) değiştirilebilir; `ZT_LANG=tr` / `ZT_LANG=en` ile de zorlanabilir.
+  (Dil) değiştirilebilir; `UW_LANG=tr` / `UW_LANG=en` ile de zorlanabilir.
 - **Yetki ayrımı**: arayüz normal kullanıcı olarak çalışır, ayrıcalıklı işler
   polkit üzerinden tek bir yardımcı betiğe gider.
 
@@ -62,10 +67,15 @@ DNS, otomatik başlatma, strateji seçimi, ağ geçidi — hepsi arayüzden yap�
 
 Seçenekler: `--yes` (soru sorma), `--no-deps`, `--no-build`, `PREFIX=/usr`.
 
-Kurulumdan sonra uygulama menüsünde **Zapret Türkiye** (Ağ kategorisi) belirir;
-oradan ya da `zapret-turkey` komutuyla açabilirsiniz.
+Kurulumdan sonra uygulama menüsünde **Unwall** (Ağ kategorisi) belirir;
+oradan ya da `unwall` komutuyla açabilirsiniz.
 
 Arch/CachyOS için paket olarak kurmak isterseniz: `cd packaging && makepkg -si`
+
+**`zapret-turkey`'den yükseltme** (projenin eski adı): `./install.sh` yeterli.
+Eski servisi kapatır, `/etc/zapret-turkey` ve `/opt/zapret-turkey` dizinlerini
+yeni yollara taşır (motorlar yeniden derlenmez), şifreli DNS ayarınızı korur,
+eski ikilileri, birimi, polkit politikasını ve menü girdisini siler.
 
 Her şeyi kaldırmak için: `./uninstall.sh` (parolayı o da yalnızca bir kez
 sorar). Servisi durdurup devre dışı
@@ -73,7 +83,7 @@ bırakır, nftables kurallarını siler, şifreli DNS yapılandırmasını geri 
 (değiştirdiği `dnscrypt-proxy.toml` varsa yedekten geri yükler), program
 dosyalarını, ayarları ve listeleri, derlenmiş motorları ve kaynak ağacını,
 günlükleri siler; sonunda geriye iz kalmadığını doğrular. `--yes` onay sormaz,
-`--keep-config` `/etc/zapret-turkey` dizinini korur, `--purge-deps`
+`--keep-config` `/etc/unwall` dizinini korur, `--purge-deps`
 `dnscrypt-proxy` paketini de kaldırır. Diğer bağımlılıklar (nftables, gtk4,
 luajit …) başka yazılımlar kullanabileceği için sistemde bırakılır.
 
@@ -95,8 +105,8 @@ sudo dnf install nftables python3-gobject libadwaita gtk4 polkit bind-utils gcc 
 </details>
 
 `build` komutu `bol-van/zapret` ve `bol-van/zapret2` depolarını
-`/opt/zapret-turkey/src` altına klonlayıp `nfqws` / `nfqws2` ikililerini derler;
-sonradan `sudo zapret-turkeyctl build` ile motorları güncelleyebilirsiniz.
+`/opt/unwall/src` altına klonlayıp `nfqws` / `nfqws2` ikililerini derler;
+sonradan `sudo unwallctl build` ile motorları güncelleyebilirsiniz.
 
 ## Kullanım
 
@@ -112,32 +122,32 @@ Arayüz normal kullanıcı olarak çalışır; yalnızca yetki gerektiren işlem
 Terminalden:
 
 ```bash
-sudo zapret-turkeyctl start STRATEGY=superonline ENGINE=zapret2
+sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 ```
 
 | Komut | İş |
 |---|---|
-| `zapret-turkeyctl status` | durum (key=value) |
-| `zapret-turkeyctl strategies [motor]` | hazır strateji listesi |
-| `zapret-turkeyctl config get\|set` | ayarları oku / yaz |
-| `sudo zapret-turkeyctl start\|stop\|restart` | motoru çalıştır / durdur |
-| `sudo zapret-turkeyctl enable\|disable` | açılışta otomatik başlatma |
-| `sudo zapret-turkeyctl blockcheck [motor]` | ISS analizi |
-| `zapret-turkeyctl dnscheck [domain]` | DNS müdahalesi kontrolü |
-| `sudo zapret-turkeyctl dns enable\|disable` | şifreli DNS (DoT/DoH) aç / kapat |
-| `zapret-turkeyctl dns status\|test` | şifreli DNS durumu / sınaması |
-| `zapret-turkeyctl doctor` | ortam / çakışma teşhisi |
-| `sudo zapret-turkeyctl disable-conflicts` | çakışan DPI araçlarını kapat |
-| `zapret-turkeyctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
+| `unwallctl status` | durum (key=value) |
+| `unwallctl strategies [motor]` | hazır strateji listesi |
+| `unwallctl config get\|set` | ayarları oku / yaz |
+| `sudo unwallctl start\|stop\|restart` | motoru çalıştır / durdur |
+| `sudo unwallctl enable\|disable` | açılışta otomatik başlatma |
+| `sudo unwallctl blockcheck [motor]` | ISS analizi |
+| `unwallctl dnscheck [domain]` | DNS müdahalesi kontrolü |
+| `sudo unwallctl dns enable\|disable` | şifreli DNS (DoT/DoH) aç / kapat |
+| `unwallctl dns status\|test` | şifreli DNS durumu / sınaması |
+| `unwallctl doctor` | ortam / çakışma teşhisi |
+| `sudo unwallctl disable-conflicts` | çakışan DPI araçlarını kapat |
+| `unwallctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
 
-Ayar dosyası: `/etc/zapret-turkey/zapret-turkey.conf`
-Listeler: `/etc/zapret-turkey/{hostlist,excludelist,autohostlist}.txt`
-Günlükler: `journalctl -u zapret-turkey -f` ve `/var/log/zapret-turkey/`
+Ayar dosyası: `/etc/unwall/unwall.conf`
+Listeler: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
+Günlükler: `journalctl -u unwall -f` ve `/var/log/unwall/`
 
 ## Şifreli DNS (YogaDNS karşılığı)
 
 ISS'niz DNS'e müdahale ediyorsa zapret tek başına yetmez. Arayüzdeki **Şifreli
-DNS** anahtarı ya da `zapret-turkeyctl dns` komutu bunu kurar; elle dosya
+DNS** anahtarı ya da `unwallctl dns` komutu bunu kurar; elle dosya
 düzenlemenize gerek yoktur.
 
 İki yöntem var:
@@ -148,26 +158,26 @@ düzenlemenize gerek yoktur.
 | **DoT** — `systemd-resolved` | 853/tcp | Ek paket gerektirmez, ama 853 ayrı bir port olduğu için bazı ISS'ler kapatabilir. |
 
 ```bash
-sudo zapret-turkeyctl dns enable cloudflare auto
+sudo unwallctl dns enable cloudflare auto
 ```
 
 `auto`, `dnscrypt-proxy` kuruluysa DoH'u, değilse DoT'u seçer. Sağlayıcı olarak
 `cloudflare`, `google` veya `quad9` verilebilir.
 
 ```bash
-zapret-turkeyctl dns test
-sudo zapret-turkeyctl dns disable
+unwallctl dns test
+sudo unwallctl dns disable
 ```
 
 Ne yapıldığı:
 
-- **DoT**: `/etc/systemd/resolved.conf.d/90-zapret-turkey.conf` içine
+- **DoT**: `/etc/systemd/resolved.conf.d/90-unwall.conf` içine
   `DNSOverTLS=yes` + sağlayıcı sunucuları yazılır. `Domains=~.` sayesinde
   DHCP ile gelen ISS DNS'i yerine bunlar kullanılır; kendi arama alanı olan
   bağlantılar (VPN, Tailscale) etkilenmez.
 - **DoH**: `dnscrypt-proxy` `127.0.0.1:5300`'de DoH istemcisi olarak çalışır,
   `systemd-resolved` upstream olarak oraya bakar. Mevcut
-  `dnscrypt-proxy.toml` üzerine yazmadan önce `.zapret-turkey.bak` olarak
+  `dnscrypt-proxy.toml` üzerine yazmadan önce `.unwall.bak` olarak
   yedeklenir; `dns disable` yedeği geri yükler.
 
 `dns disable` her iki değişikliği de geri alır — kaldırma betiği de bunu çağırır.
@@ -198,13 +208,13 @@ olarak paket düşürüyorsa yönlendirmeye izin vermeniz gerekir.
 | `winws.exe` / `winws2.exe` | `nfqws` / `nfqws2` |
 | WinDivert sürücüsü | netfilter NFQUEUE (`nfnetlink_queue`) |
 | `--wf-tcp` / `--wf-udp` / `--wf-l3` | nftables kuralları (`queue num ... bypass`) |
-| `sc create ZapretService` | `zapret-turkey.service` (systemd) |
+| `sc create ZapretService` | `unwall.service` (systemd) |
 | UAC / `#RequireAdmin` | polkit + `pkexec` (yalnızca yardımcı betik yükselir) |
 | Npcap + `go-pcap2socks` | `ip_forward` + `nft masquerade` |
 | YogaDNS (elle kurulur) | `dns enable` ile tümleşik DoH/DoT (`dnscrypt-proxy` / `systemd-resolved`) |
 | `nslookup`, `ipconfig /flushdns` | `dig`, `resolvectl flush-caches` |
 | GoodbyeDPI çakışma kontrolü | `nfqws`/`tpws`/`byedpi`/TUN ve kuyruk çakışması (`doctor`) |
-| `config.ini` | `/etc/zapret-turkey/zapret-turkey.conf` |
+| `config.ini` | `/etc/unwall/unwall.conf` |
 | AutoIt GUI | GTK4 + libadwaita (Python) |
 
 Strateji parametreleri (`--dpi-desync=…`, `--lua-desync=…`, `--hostlist…`) her iki
@@ -213,12 +223,12 @@ platformda aynıdır; yalnızca trafiği motora yönlendirme katmanı değişir.
 ## Proje yapısı
 
 ```
-bin/zapret-turkeyctl          ayrıcalıklı işlerin tamamı (CLI + polkit hedefi)
-bin/zapret-turkey             GUI başlatıcı
-gui/zapret_turkey_gui.py      GTK4 / libadwaita arayüzü
+bin/unwallctl          ayrıcalıklı işlerin tamamı (CLI + polkit hedefi)
+bin/unwall             GUI başlatıcı
+gui/unwall_gui.py      GTK4 / libadwaita arayüzü
 lib/strategies.conf           hazır strateji profilleri
-etc/zapret-turkey.conf        varsayılan yapılandırma
-systemd/zapret-turkey.service systemd birimi
+etc/unwall.conf        varsayılan yapılandırma
+systemd/unwall.service systemd birimi
 polkit/…policy                yetki yükseltme politikası
 packaging/PKGBUILD            Arch paketi
 docs/screenshots/             arayüz görselleri
@@ -227,13 +237,13 @@ docs/screenshots/             arayüz görselleri
 ## Sorun giderme
 
 ```bash
-zapret-turkeyctl doctor
+unwallctl doctor
 ```
 
 Arayüzü terminalden çalıştırırsanız her şey konsola akar; ayrıntı için:
 
 ```bash
-ZT_DEBUG=1 zapret-turkey
+UW_DEBUG=1 unwall
 ```
 
 Uygulama tek örnekli çalışır: menüden açılmış bir pencere varken terminalden
@@ -241,14 +251,14 @@ başlatmak yalnızca o pencereyi öne getirir ve terminale log gelmez. Hata
 ayıklarken ayrı bir örnek isterseniz:
 
 ```bash
-ZT_NO_UNIQUE=1 ZT_DEBUG=1 zapret-turkey
+UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
 ```
 
-- **Motor başlamıyor**: `journalctl -u zapret-turkey -n 50`
+- **Motor başlamıyor**: `journalctl -u unwall -n 50`
 - **Seçtiğim strateji geri dönüyor**: seçim "AYARLARI UYGULA" / "ZAPRET'İ
   BAŞLAT" düğmesine basılana kadar yalnızca beklemededir; durum satırında
   `uygulanmadı → ...` şeklinde görünür.
-- **Hiçbir şey değişmedi**: `sudo nft list table ip zapret_turkey` ile kuralların
+- **Hiçbir şey değişmedi**: `sudo nft list table ip unwall` ile kuralların
   yüklendiğini doğrulayın; hostlist modu `manual` ise alan adının listede olduğundan
   emin olun.
 - **QUIC/HTTP3 siteleri bozuldu**: config'te `PORTS_UDP=` (boş) yapın.

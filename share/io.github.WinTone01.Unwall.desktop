@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Unwall
+GenericName=DPI Bypass
+GenericName[tr]=DPI Engel Aşma
+Comment=Control panel for the zapret DPI bypass engine
+Comment[tr]=DPI tabanlı engelleri atlatmak için zapret kontrol paneli
+Exec=unwall
+Icon=io.github.WinTone01.Unwall
+Terminal=false
+Categories=Qt;KDE;Network;Security;
+Keywords=zapret;nfqws;dpi;bypass;censorship;discord;roblox;vpn;dns;sansür;engel;
+StartupNotify=true
+StartupWMClass=io.github.WinTone01.Unwall
+X-KDE-StartupNotify=true

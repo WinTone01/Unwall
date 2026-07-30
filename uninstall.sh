@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Zapret Linux Türkiye kaldırma betiği
+# Unwall kaldırma betiği / uninstaller
 #
 # Varsayılan olarak HER ŞEYİ siler: servis, nftables kuralları, şifreli DNS
 # yapılandırması, program dosyaları, ayarlar, listeler, derlenmiş motorlar,
@@ -12,12 +12,12 @@
 #
 set -euo pipefail
 
-ETCDIR="/etc/zapret-turkey"
-OPTDIR="/opt/zapret-turkey"
-LOGDIR="/var/log/zapret-turkey"
-RESOLVED_DROPIN="/etc/systemd/resolved.conf.d/90-zapret-turkey.conf"
+ETCDIR="/etc/unwall"
+OPTDIR="/opt/unwall"
+LOGDIR="/var/log/unwall"
+RESOLVED_DROPIN="/etc/systemd/resolved.conf.d/90-unwall.conf"
 DNSCRYPT_CONF="/etc/dnscrypt-proxy/dnscrypt-proxy.toml"
-DNSCRYPT_BAK="/etc/dnscrypt-proxy/dnscrypt-proxy.toml.zapret-turkey.bak"
+DNSCRYPT_BAK="/etc/dnscrypt-proxy/dnscrypt-proxy.toml.unwall.bak"
 
 ASSUME_YES=0
 KEEP_CONFIG=0
@@ -58,10 +58,10 @@ PREFIXES="/usr/local /usr"
 
 # --- ne silineceğini göster ---
 step "kaldırılacaklar"
-note "servis        : zapret-turkey.service (durdurulur, devre dışı bırakılır)"
-note "ağ kuralları  : nftables tablosu zapret_turkey"
+note "servis        : unwall.service (durdurulur, devre dışı bırakılır)"
+note "ağ kuralları  : nftables tablosu unwall"
 note "şifreli DNS   : $RESOLVED_DROPIN ve dnscrypt-proxy yapılandırması geri alınır"
-note "program       : {/usr,/usr/local}/bin/zapret-turkey{,ctl}, lib, polkit, .desktop, ikon"
+note "program       : {/usr,/usr/local}/bin/unwall{,ctl}, lib, polkit, .desktop, ikon"
 if [ "$KEEP_CONFIG" = 1 ]; then
 	note "ayarlar       : KORUNUYOR ($ETCDIR)"
 else
@@ -82,12 +82,12 @@ fi
 
 # --- 1. servis ve ağ kuralları ---
 step "servis durduruluyor"
-systemctl disable --now zapret-turkey.service >/dev/null 2>&1 || true
-systemctl reset-failed zapret-turkey.service >/dev/null 2>&1 || true
+systemctl disable --now unwall.service >/dev/null 2>&1 || true
+systemctl reset-failed unwall.service >/dev/null 2>&1 || true
 
 # kuralları doğrudan kaldır (ctl'ye ihtiyaç yok, zaten root'uz)
-nft delete table ip zapret_turkey 2>/dev/null || true
-nft delete table inet zapret_turkey 2>/dev/null || true
+nft delete table ip unwall 2>/dev/null || true
+nft delete table inet unwall 2>/dev/null || true
 
 # bu kurulumdan kalan motor süreçleri
 for pid in $(pgrep -f "$OPTDIR/(engines|src)/.*/nfqws" 2>/dev/null || true); do
@@ -107,7 +107,7 @@ if [ -f "$DNSCRYPT_BAK" ]; then
 	mv -f "$DNSCRYPT_BAK" "$DNSCRYPT_CONF"
 	note "dnscrypt-proxy yapılandırması geri yüklendi"
 	systemctl try-restart dnscrypt-proxy >/dev/null 2>&1 || true
-elif [ -f "$DNSCRYPT_CONF" ] && grep -qs "zapret-turkey" "$DNSCRYPT_CONF"; then
+elif [ -f "$DNSCRYPT_CONF" ] && grep -qs "unwall" "$DNSCRYPT_CONF"; then
 	# yedek yok ama dosya bize aitse bırakmayalım
 	rm -f "$DNSCRYPT_CONF"
 	systemctl disable --now dnscrypt-proxy >/dev/null 2>&1 || true
@@ -119,19 +119,33 @@ resolvectl flush-caches >/dev/null 2>&1 || true
 
 # --- 3. program dosyaları ---
 step "program dosyaları siliniyor"
-for p in $PREFIXES; do
-	rm -f  "$p/bin/zapret-turkeyctl" "$p/bin/zapret-turkey"
-	rm -rf "$p/lib/zapret-turkey"
-done
-rm -f /etc/systemd/system/zapret-turkey.service
-rm -f /usr/lib/systemd/system/zapret-turkey.service
+# eski isimle (zapret-turkey) kalmış dosyalar da gitsin
+systemctl disable --now zapret-turkey.service >/dev/null 2>&1 || true
+nft delete table ip zapret_turkey 2>/dev/null || true
+nft delete table inet zapret_turkey 2>/dev/null || true
+rm -f /usr/local/bin/zapret-turkeyctl /usr/bin/zapret-turkeyctl \
+      /usr/local/bin/zapret-turkey /usr/bin/zapret-turkey
+rm -rf /usr/local/lib/zapret-turkey /usr/lib/zapret-turkey /etc/zapret-turkey \
+       /opt/zapret-turkey /var/log/zapret-turkey
+rm -f /etc/systemd/system/zapret-turkey.service /usr/lib/systemd/system/zapret-turkey.service
 rm -f /usr/share/polkit-1/actions/org.zapret.turkey.policy
-rm -f /usr/share/applications/org.zapret.turkey.desktop
-rm -f /usr/share/applications/zapret-turkey.desktop
+rm -f /usr/share/applications/org.zapret.turkey.desktop /usr/share/applications/zapret-turkey.desktop
 rm -f /usr/share/icons/hicolor/scalable/apps/zapret-turkey.svg
 rm -f /etc/modules-load.d/zapret-turkey.conf
-rm -f /usr/lib/modules-load.d/zapret-turkey.conf
-rm -rf /usr/share/doc/zapret-turkey
+rm -f /etc/systemd/resolved.conf.d/90-zapret-turkey.conf
+for p in $PREFIXES; do
+	rm -f  "$p/bin/unwallctl" "$p/bin/unwall"
+	rm -rf "$p/lib/unwall"
+done
+rm -f /etc/systemd/system/unwall.service
+rm -f /usr/lib/systemd/system/unwall.service
+rm -f /usr/share/polkit-1/actions/io.github.WinTone01.Unwall.policy
+rm -f /usr/share/applications/io.github.WinTone01.Unwall.desktop
+rm -f /usr/share/applications/unwall.desktop
+rm -f /usr/share/icons/hicolor/scalable/apps/io.github.WinTone01.Unwall.svg
+rm -f /etc/modules-load.d/unwall.conf
+rm -f /usr/lib/modules-load.d/unwall.conf
+rm -rf /usr/share/doc/unwall
 
 systemctl daemon-reload >/dev/null 2>&1 || true
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications || true
@@ -171,23 +185,23 @@ fi
 step "kalan iz kontrolü"
 leftovers=""
 for f in \
-	/usr/local/bin/zapret-turkeyctl /usr/bin/zapret-turkeyctl \
-	/usr/local/bin/zapret-turkey /usr/bin/zapret-turkey \
-	/usr/local/lib/zapret-turkey /usr/lib/zapret-turkey \
-	/etc/systemd/system/zapret-turkey.service \
-	/usr/lib/systemd/system/zapret-turkey.service \
-	/usr/share/polkit-1/actions/org.zapret.turkey.policy \
-	/usr/share/applications/org.zapret.turkey.desktop \
-	/usr/share/icons/hicolor/scalable/apps/zapret-turkey.svg \
-	/etc/modules-load.d/zapret-turkey.conf \
+	/usr/local/bin/unwallctl /usr/bin/unwallctl \
+	/usr/local/bin/unwall /usr/bin/unwall \
+	/usr/local/lib/unwall /usr/lib/unwall \
+	/etc/systemd/system/unwall.service \
+	/usr/lib/systemd/system/unwall.service \
+	/usr/share/polkit-1/actions/io.github.WinTone01.Unwall.policy \
+	/usr/share/applications/io.github.WinTone01.Unwall.desktop \
+	/usr/share/icons/hicolor/scalable/apps/io.github.WinTone01.Unwall.svg \
+	/etc/modules-load.d/unwall.conf \
 	"$RESOLVED_DROPIN" "$OPTDIR" "$LOGDIR"
 do
 	[ -e "$f" ] && leftovers="$leftovers $f"
 done
 [ "$KEEP_CONFIG" = 1 ] || { [ -e "$ETCDIR" ] && leftovers="$leftovers $ETCDIR"; }
 
-if nft list table ip zapret_turkey >/dev/null 2>&1 || nft list table inet zapret_turkey >/dev/null 2>&1; then
-	leftovers="$leftovers nftables:zapret_turkey"
+if nft list table ip unwall >/dev/null 2>&1 || nft list table inet unwall >/dev/null 2>&1; then
+	leftovers="$leftovers nftables:unwall"
 fi
 
 if [ -n "$leftovers" ]; then

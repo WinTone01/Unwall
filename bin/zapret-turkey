@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# Zapret Linux Türkiye grafik arayüzünü başlatır.
-ZT_LIB="${ZT_LIB:-/usr/local/lib/zapret-turkey}"
-exec python3 -u "$ZT_LIB/zapret_turkey_gui.py" "$@"
