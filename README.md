@@ -4,6 +4,11 @@ Türk kullanıcılar için DPI (Deep Packet Inspection) tabanlı internet sansü
 atlatmaya yarayan [zapret](https://github.com/bol-van/zapret) ve
 [zapret2](https://github.com/bol-van/zapret2) motorlarının Linux kontrol paneli.
 
+<p align="center">
+  <img src="docs/screenshots/arayuz-ust.png" alt="Zapret Türkiye arayüzü - durum, motor, strateji ve şifreli DNS" width="46%">
+  <img src="docs/screenshots/arayuz-alt.png" alt="Zapret Türkiye arayüzü - şifreli DNS, ağ geçidi modu ve servis" width="46%">
+</p>
+
 Bu depo, aynı projenin Windows sürümünün (AutoIt + `zapret-win-bundle`) Linux
 karşılığıdır. Windows sürümü [`windows-legacy/`](windows-legacy/) klasöründe
 korunmaktadır.
@@ -11,7 +16,7 @@ korunmaktadır.
 Linux'ta motorun kendisi zaten yerli çalışır: WinDivert sürücüsü yerine çekirdeğin
 **netfilter/NFQUEUE** altyapısı kullanılır, `winws.exe` yerine `nfqws` çalışır.
 Bu proje o motorun etrafına Türkiye'ye özel stratejiler, hostlist yönetimi,
-systemd servisi ve GTK4 arayüzü ekler.
+systemd servisi, şifreli DNS ve GTK4 arayüzü ekler.
 
 ## Özellikler
 
@@ -85,7 +90,13 @@ sonradan `sudo zapret-turkeyctl build` ile motorları güncelleyebilirsiniz.
 ## Kullanım
 
 Grafik arayüzden motoru, stratejiyi ve hostlist modunu seçip **ZAPRET'İ BAŞLAT**
-demeniz yeterli. "Açılışta otomatik başlat" anahtarı systemd birimini etkinleştirir.
+demeniz yeterli. Seçimleriniz siz düğmeye basana kadar uygulanmaz; o ana kadar
+durum satırında `uygulanmadı → ...` şeklinde görünür ve düğme
+**AYARLARI UYGULA** olur. "Açılışta otomatik başlat" anahtarı systemd birimini
+etkinleştirir; arayüz kapalıyken de çalışmaya devam eder.
+
+Arayüz normal kullanıcı olarak çalışır; yalnızca yetki gerektiren işlemler
+(başlatma, servis, DNS, ağ kuralları) polkit üzerinden parola sorar.
 
 Terminalden:
 

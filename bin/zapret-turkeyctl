@@ -493,8 +493,12 @@ dns_status() {
 	if [ "$backend" = "dnscrypt" ] && ! systemctl is-active --quiet dnscrypt-proxy 2>/dev/null; then
 		encrypted=0
 	fi
-	if [ "$backend" = "resolved" ] && ! resolvectl status 2>/dev/null | grep -q '+DNSOverTLS'; then
-		encrypted=0
+	if [ "$backend" = "resolved" ]; then
+		local rstat; rstat="$(resolvectl status 2>/dev/null || true)"
+		case "$rstat" in
+		*'+DNSOverTLS'*) ;;
+		*) encrypted=0 ;;
+		esac
 	fi
 
 	servers="$(resolvectl status 2>/dev/null | sed -n 's/^ *Current DNS Server: //p' | tr '\n' ' ')"
@@ -707,7 +711,8 @@ cmd_doctor() {
 
 	command -v nft >/dev/null && check "nftables" 0 || check "nftables" 1 "nftables paketini kurun"
 	[ -x "$(engine_bin)" ] && check "motor ($ENGINE)" 0 || check "motor ($ENGINE)" 1 "zapret-turkeyctl build"
-	if lsmod 2>/dev/null | grep -q nfnetlink_queue || modinfo nfnetlink_queue >/dev/null 2>&1; then
+	local mods; mods="$(lsmod 2>/dev/null || true)"
+	if case "$mods" in *nfnetlink_queue*) true ;; *) false ;; esac || modinfo nfnetlink_queue >/dev/null 2>&1; then
 		check "nfnetlink_queue" 0
 	else
 		check "nfnetlink_queue" 1 "çekirdek modülü yok"
@@ -715,7 +720,8 @@ cmd_doctor() {
 	systemctl list-unit-files "$UNIT" >/dev/null 2>&1 && check "systemd birimi" 0 || check "systemd birimi" 1 "install.sh çalıştırın"
 
 	# aynı kuyruk numarasını kullanan başka kural var mı
-	if nft -a list ruleset 2>/dev/null | grep -q "queue.*num $QNUM" ; then
+	local ruleset; ruleset="$(nft -a list ruleset 2>/dev/null || true)"
+	if case "$ruleset" in *"queue"*"num $QNUM"*) true ;; *) false ;; esac; then
 		if nft list table ip "$NFT_TABLE" >/dev/null 2>&1 || nft list table inet "$NFT_TABLE" >/dev/null 2>&1; then
 			check "kuyruk $QNUM" 0 "bize ait"
 		else
