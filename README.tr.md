@@ -86,6 +86,7 @@ oradan ya da `unwall` komutuyla açabilirsiniz.
 | Debian / Ubuntu | `./packaging/build-deb.sh && sudo apt install ./packaging/unwall_*.deb` |
 | Fedora / openSUSE | `./packaging/build-rpm.sh && sudo dnf install ./packaging/RPMS/*.rpm` |
 | Flatpak (yalnızca arayüz) | bkz. [`flatpak/README.md`](flatpak/README.md) |
+| AppImage (yalnızca arayüz) | `./packaging/build-appimage.sh` |
 
 `.deb` ve `.rpm` derleme betikleri sırasıyla `dpkg-dev` ve `rpm-build`
 (`rpmbuild`) gerektirir; bu depodan gerçek bir paket üretirler, hazır bir
@@ -93,10 +94,20 @@ oradan ya da `unwall` komutuyla açabilirsiniz.
 arayüzden ya da `unwallctl` ile yapmadıkça hiçbir servis başlamaz, hiçbir
 sistem ayarına dokunulmaz.
 
-Flatpak ayrı bir durum: yalnızca GTK4 arayüzünü içerebilir, nftables/
-systemd/NFQUEUE kısmını değil; bu yüzden host'ta yukarıdaki paketlerden
-biri (ya da `install.sh`) zaten kurulu olmalı. Nedenini ve nasıl host'a
-ulaştığını [`flatpak/README.md`](flatpak/README.md) dosyasında bulabilirsiniz.
+Flatpak ve AppImage ayrı bir durum: ikisi de yalnızca GTK4 arayüzünü
+içerebilir, nftables/systemd/NFQUEUE kısmını değil; bu yüzden host'ta
+yukarıdaki paketlerden biri (ya da `install.sh`) zaten kurulu olmalı.
+
+- **Flatpak** sandbox'lıdır; host'un `unwallctl`/`pkexec`'ine
+  `flatpak-spawn --host` ile ulaşır. Nedenini ve nasıl çalıştığını
+  [`flatpak/README.md`](flatpak/README.md) dosyasında bulabilirsiniz.
+- **AppImage** sandbox'lı *değildir* — normal kullanıcı yetkinizle, diğer
+  ikili dosyalar gibi çalışır; `unwallctl`/`pkexec`'i doğrudan çağırır,
+  köprüye gerek yoktur. `appimagetool` gerektirir
+  (`PATH`'inizde değilse `APPIMAGETOOL=/araç/yolu ./packaging/build-appimage.sh`);
+  ortaya çıkan `Unwall-<sürüm>-x86_64.AppImage`, Flatpak gibi hâlâ
+  çalıştığı makinede native motoru bekleyen, taşınabilir tek dosyalık bir
+  arayüzdür.
 
 **`zapret-turkey`'den yükseltme** (projenin eski adı): `./install.sh` yeterli.
 Eski servisi kapatır, `/etc/zapret-turkey` ve `/opt/zapret-turkey` dizinlerini
@@ -270,6 +281,7 @@ packaging/PKGBUILD     Arch paketi
 packaging/debian/      .deb kontrol dosyaları (bkz. build-deb.sh)
 packaging/unwall.spec  Fedora/openSUSE .rpm spec (bkz. build-rpm.sh)
 flatpak/                Arayüz için Flatpak manifesti (bkz. flatpak/README.md)
+packaging/appimage/     AppImage için AppRun (bkz. build-appimage.sh)
 docs/screenshots/      arayüz görselleri
 ```
 

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Unwall AppImage giriş noktası.
+#
+# AppImage, Flatpak'ın aksine sandbox'lamaz: bu betik doğrudan sizin
+# kullanıcınız olarak, host'un PATH'i ve ortamıyla çalışır. Bu yüzden
+# gui/unwall_gui.py'de Flatpak için yazılmış flatpak-spawn mantığına hiç
+# gerek yok — unwallctl ve pkexec zaten doğrudan bulunur ve çalıştırılır,
+# tıpkı normal kurulumdaki gibi.
+#
+# Bunun bedeli: GTK4/libadwaita/PyGObject bu AppImage'a gömülü DEĞİL,
+# host sisteminde kurulu olmaları gerekiyor (native paketlerden biriyle
+# zaten gelirler). AppImage burada asıl olarak "kurulum yapmadan taşınabilir
+# tek dosya arayüz" sağlıyor; unwallctl'in kendisi hâlâ host'ta native
+# olarak kurulu olmalı (bkz. ../../install.sh ya da diğer paketler).
+HERE="$(dirname "$(readlink -f "$0")")"
+exec python3 -u "$HERE/usr/lib/unwall/unwall_gui.py" "$@"

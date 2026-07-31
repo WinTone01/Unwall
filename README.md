@@ -86,6 +86,7 @@ category); launch it from there or with the `unwall` command.
 | Debian / Ubuntu | `./packaging/build-deb.sh && sudo apt install ./packaging/unwall_*.deb` |
 | Fedora / openSUSE | `./packaging/build-rpm.sh && sudo dnf install ./packaging/RPMS/*.rpm` |
 | Flatpak (GUI only) | see [`flatpak/README.md`](flatpak/README.md) |
+| AppImage (GUI only) | `./packaging/build-appimage.sh` |
 
 The `.deb` and `.rpm` build scripts need `dpkg-dev` and `rpm-build` (or
 `rpmbuild`) respectively; they produce a real package from this repository,
@@ -93,10 +94,20 @@ they do not download anything prebuilt. Both packages behave exactly like
 `install.sh`: no service is started and no system setting is touched until
 you do it from the GUI or with `unwallctl`.
 
-The Flatpak is a separate case: it can only contain the GTK4 interface, not
-the nftables/systemd/NFQUEUE parts, so it still needs one of the packages
-above (or `install.sh`) installed on the host first. See
-[`flatpak/README.md`](flatpak/README.md) for why and how it reaches the host.
+The Flatpak and the AppImage are a separate case: they can only contain the
+GTK4 interface, not the nftables/systemd/NFQUEUE parts, so either still needs
+one of the packages above (or `install.sh`) installed on the host first.
+
+- The **Flatpak** is sandboxed and reaches the host's `unwallctl`/`pkexec`
+  through `flatpak-spawn --host`; see [`flatpak/README.md`](flatpak/README.md)
+  for why and how.
+- The **AppImage** is *not* sandboxed — it runs with your normal user
+  permissions like any other binary, so it calls `unwallctl`/`pkexec`
+  directly, no bridging needed. It needs `appimagetool`
+  (`APPIMAGETOOL=/path/to/it ./packaging/build-appimage.sh` if it is not on
+  your `PATH`); the resulting `Unwall-<version>-x86_64.AppImage` is a single
+  portable file that still expects the native backend on the machine it runs
+  on, same as the Flatpak.
 
 **Upgrading from `zapret-turkey`** (the previous name of this project): just run
 `./install.sh`. It disables the old service, moves `/etc/zapret-turkey` and
@@ -268,6 +279,7 @@ packaging/PKGBUILD     Arch package
 packaging/debian/      .deb control files (see build-deb.sh)
 packaging/unwall.spec  Fedora/openSUSE .rpm spec (see build-rpm.sh)
 flatpak/                Flatpak manifest for the GUI (see flatpak/README.md)
+packaging/appimage/     AppRun for the AppImage (see build-appimage.sh)
 docs/screenshots/      interface screenshots
 ```
 

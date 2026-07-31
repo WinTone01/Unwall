@@ -4,6 +4,7 @@ __pycache__/
 # packaging/build-*.sh çıktıları
 packaging/*.deb
 packaging/RPMS/
+packaging/*.AppImage
 flatpak/build-dir/
 flatpak/.flatpak-builder/
 flatpak/repo/

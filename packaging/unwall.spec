@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.2.1
+Version:        1.3.0
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -160,6 +160,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.0-1
+- Added AppImage packaging (packaging/build-appimage.sh).
 * Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.2.1-1
 - Hardcode _unitdir/_libdir instead of relying on macros not defined outside Fedora.
 * Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.2.0-1
