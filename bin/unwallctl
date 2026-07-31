@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.1"
+VERSION="1.3.2"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -563,6 +563,22 @@ dns_provider_doh() {
 	esac
 }
 
+# public-resolvers.md'den alınmış, sağlayıcının IP'sini de içeren DNS
+# stamp'i. dnscrypt-proxy'ye bunu [static] olarak verince açılışta
+# resolver listesini indirmesi (ve bunun için ayrı bir DNS/HTTP
+# bağlantısına ihtiyaç duyması) hiç gerekmiyor - tam da ISS'nin
+# engelleyebileceği türden bir bağlantı olduğu için bu, Türkiye'de en
+# kırılgan nokta. Sürüm/parmak izi değişirse dnscrypt-proxy stamp'teki
+# IP'ye doğrudan bağlanmaya devam eder; yalnızca sağlayıcı anahtarını
+# değiştirirlerse (nadir) burayı güncellemek gerekir.
+dns_provider_stamp() {
+	case "$1" in
+	google) printf 'sdns://AgUAAAAAAAAABzguOC44LjggalBisNF41VbxY7E7Gw8ZQ10CWIKRzHVYnf7m6xHI1cMHOC44LjguOAovZG5zLXF1ZXJ5' ;;
+	quad9)  printf 'sdns://AgMAAAAAAAAABzkuOS45LjkgsBkgdEu7dsmrBT4B4Ht-BQ5HPSD3n3vqQ1-v5DydJC8SZG5zOS5xdWFkOS5uZXQ6NDQzCi9kbnMtcXVlcnk' ;;
+	*)      printf 'sdns://AgcAAAAAAAAABzEuMC4wLjEAEmRucy5jbG91ZGZsYXJlLmNvbQovZG5zLXF1ZXJ5' ;;
+	esac
+}
+
 dns_backend_auto() {
 	if command -v dnscrypt-proxy >/dev/null 2>&1; then
 		printf 'dnscrypt'
@@ -662,7 +678,22 @@ dns_enable() {
 	dnscrypt)
 		command -v dnscrypt-proxy >/dev/null 2>&1 || die "$(t 'dnscrypt-proxy is not installed') (pacman -S dnscrypt-proxy)"
 		dnscrypt_write_config "$provider"
+		dnscrypt_fix_restart_policy
 		systemctl enable --now dnscrypt-proxy
+		# Type=simple bir birimde "enable --now"un başarılı dönmesi, süreç
+		# başladı anlamına gelir - hemen çökmediği anlamına gelmez. Gerçek
+		# durumu birkaç saniye bekleyip kontrol ediyoruz; aksi halde
+		# "şifreli DNS açık" deyip aslında açmamış oluruz.
+		local i ok=0
+		for i in 1 2 3 4 5 6 7 8 9 10; do
+			systemctl is-active --quiet dnscrypt-proxy && { ok=1; break; }
+			sleep 1
+		done
+		if [ "$ok" != 1 ]; then
+			warn "dnscrypt-proxy başlatılamadı, son günlük:"
+			journalctl -u dnscrypt-proxy -n 15 --no-pager 2>/dev/null >&2 || true
+			die "dnscrypt-proxy servisi etkin değil (bkz. yukarıdaki günlük ya da: journalctl -u dnscrypt-proxy)"
+		fi
 		mkdir -p "$(dirname "$RESOLVED_DROPIN")"
 		{
 			printf '# unwall tarafından oluşturuldu - elle düzenlemeyin\n'
@@ -688,10 +719,11 @@ dns_enable() {
 dnscrypt_write_config() {
 	local provider="$1"
 	local server; server="$(dns_provider_doh "$provider")"
+	local stamp; stamp="$(dns_provider_stamp "$provider")"
 
-	if [ -f "$DNSCRYPT_CONF" ] && ! grep -q 'unwall' "$DNSCRYPT_CONF"; then
+	if [ -f "$DNSCRYPT_CONF" ] && ! grep -q 'unwall' "$DNSCRYPT_CONF" && [ ! -f "$DNSCRYPT_BAK" ]; then
 		info "$(t 'backing up the existing dnscrypt-proxy configuration'): $DNSCRYPT_BAK"
-		cp -n "$DNSCRYPT_CONF" "$DNSCRYPT_BAK"
+		cp "$DNSCRYPT_CONF" "$DNSCRYPT_BAK"
 	fi
 
 	mkdir -p "$(dirname "$DNSCRYPT_CONF")" /var/cache/dnscrypt-proxy
@@ -718,17 +750,42 @@ cache_min_ttl = 2400
 cache_max_ttl = 86400
 bootstrap_resolvers = ['9.9.9.9:53', '8.8.8.8:53']
 ignore_system_dns = true
-netprobe_timeout = 60
+netprobe_timeout = 5
 netprobe_address = '9.9.9.9:53'
 
-[sources]
-  [sources.'public-resolvers']
-  urls = ['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md', 'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md']
-  cache_file = '/var/cache/dnscrypt-proxy/public-resolvers.md'
-  minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
-  refresh_delay = 72
+# Sağlayıcıyı [sources] üzerinden internetten indirmek yerine burada
+# doğrudan tanımlıyoruz (stamp IP'yi zaten içeriyor). Bunun sebebi:
+# indirme adresleri (raw.githubusercontent.com vb.) tam da ISS'nin
+# engelleyebileceği türden adresler - açılışta oraya erişilemezse
+# dnscrypt-proxy hiç başlamıyordu. [static] ile ilk açılış hiçbir dış
+# bağlantıya muhtaç değil.
+[static]
+  [static.'$server']
+  stamp = '$stamp'
 EOF
 	chmod 0644 "$DNSCRYPT_CONF"
+	command -v restorecon >/dev/null 2>&1 &&
+		restorecon -RF "$(dirname "$DNSCRYPT_CONF")" /var/cache/dnscrypt-proxy 2>/dev/null
+	return 0
+}
+
+# Fedora'nın dnscrypt-proxy birimi RestartSec=120 ile geliyor: ilk açılış
+# başarısız olursa "etkin değil" durumu 2 dakika sürüyor ve bu sırada
+# systemctl enable --now yine de "başarılı" döner (Type=simple, exec()
+# anında döner). Bu drop-in yeniden deneme süresini kısaltır ve ağ hazır
+# olmadan başlamasını engeller; tüm dağıtımlarda zararsızdır.
+dnscrypt_fix_restart_policy() {
+	local dir="/etc/systemd/system/dnscrypt-proxy.service.d"
+	mkdir -p "$dir"
+	cat > "$dir/90-unwall.conf" <<'EOF'
+[Unit]
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+RestartSec=2
+EOF
+	systemctl daemon-reload
 }
 
 dns_disable() {
@@ -1029,6 +1086,13 @@ cmd_blockcheck() {
 	local domains="${DOMAINS:-discord.com roblox.com}"
 	info "$(t 'blockcheck starting') ($eng): $domains  --  log: $log"
 
+	# blockcheck çalışan bir strateji bulamazsa (birçok ISS'de tamamen
+	# olağan bir sonuç) non-zero çıkış kodu döner. `set -e` + `pipefail`
+	# altında bu, aşağıdaki satırın yakalanmadan tüm betiği hiçbir
+	# açıklama yazmadan sonlandırmasına yol açardı - arayüzde "hiçbir şey
+	# olmuyor, hata da yok" olarak görünürdü. Çıkış kodunu kendimiz
+	# denetleyip devam ediyoruz.
+	set +e
 	env BATCH=1 \
 		ZAPRET_BASE="$base" \
 		ZAPRET_RW="$UW_LOG" \
@@ -1041,6 +1105,11 @@ cmd_blockcheck() {
 		REPEATS="${REPEATS:-1}" \
 		SCANLEVEL="${SCANLEVEL:-standard}" \
 		bash "$base/$script" 2>&1 | tee "$log"
+	local bc_status="${PIPESTATUS[0]}"
+	set -e
+	if [ "$bc_status" -ne 0 ]; then
+		warn "blockcheck çıkış kodu $bc_status ile bitti (çalışan bir strateji bulunamamış olabilir, aşağıya bakın)"
+	fi
 
 	local found
 	found="$(parse_blockcheck "$log" "$eng" || true)"

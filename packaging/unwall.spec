@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.3.1
+Version:        1.3.2
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.2-1
+- Fix silent blockcheck failure under set -e/pipefail; make dnscrypt-proxy setup reliable on Fedora (static stamps, no external fetch needed at startup).
 * Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.1-1
 - Add libcap-devel build dependency, fix DNS-poisoning false positive, add gateway-mode DNS redirect.
 * Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.0-1
