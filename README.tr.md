@@ -238,12 +238,22 @@ bir yönlendiriciye dönüşür (`ip_forward` + `nft masquerade`) ve yönlendiri
 trafik de zapret'ten geçer. Windows'taki Npcap + `go-pcap2socks` katmanına gerek
 yoktur; yönlendirme çekirdek tarafından yapılır.
 
+DNS de Windows sürümündeki `go-pcap2socks`'un yaptığı işi görür, sadece gömülü
+bir proxy yerine bir nftables kuralıyla: LAN'dan gelen her DNS sorgusu (TCP ve
+UDP, port 53) bu makinenin **kendi kullandığı çözümleyiciye** (şifreli DNS
+açıksa ona dahil) şeffafça yönlendirilir. **Cihazın DNS alanına ne yazdığınızın
+önemi yoktur** — ISS'niz port 53'ü engelliyorsa zaten bu özellik tam da bunun
+için var: cihazın paketleri o adrese hiç gerçekten çıkmaz, çıkmadan önce bu
+makineye yeniden yazılır.
+
 Cihazın (PlayStation, Xbox, Switch, TV) manuel ağ ayarlarına:
 
 - **IP adresi**: ağınızda boş bir adres (örn. `192.168.1.50`)
 - **Alt ağ maskesi**: ağınızla aynı (genelde `255.255.255.0`)
 - **Ağ geçidi**: bu bilgisayarın LAN IP adresi (arayüzde "LAN adresi" satırında yazar)
-- **DNS**: `1.1.1.1` / `8.8.8.8`
+- **DNS**: geçerli görünen herhangi bir değer olur (örn. `1.1.1.1`) — çoğu
+  cihaz DNS alanı boşken devam etmiyor, ama gerçek değer yukarıdaki
+  yönlendirmeyle zaten geçersiz kılınıyor
 
 Not: `firewalld`/`ufw` gibi bir güvenlik duvarı `forward` zincirinde varsayılan
 olarak paket düşürüyorsa yönlendirmeye izin vermeniz gerekir.
@@ -313,6 +323,15 @@ UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
   yüklendiğini doğrulayın; hostlist modu `manual` ise alan adının listede olduğundan
   emin olun.
 - **QUIC/HTTP3 siteleri bozuldu**: config'te `PORTS_UDP=` (boş) yapın.
+- **"Otomatik (zapret öğrenir)" hostlist modu yeni domain eklemiyor**: bir
+  domain yalnızca *henüz desync edilmemişken* tanınabilir bir "bağlantı
+  engellendi" örüntüsü (varsayılan: 60 saniyede 3 başarısızlık — TCP
+  retransmit, ya da en az 4 giden/en fazla 1 gelen UDP paketi) görülürse
+  eklenir. Stratejiniz zaten sorunsuz çalışıyorsa bu örüntü hiç oluşmaz ve
+  domain haklı olarak eklenmez — bu bir hata değil, öğrenecek bir şey
+  olmadığı anlamına gelir. Motorun gerçekte ne gördüğünü görmek için
+  engellenen bir siteye girerken `sudo tail -f /var/log/unwall/hostlist-auto.log`
+  komutunu izleyin.
 - **Başka bir DPI aracı çalışıyor**: `byedpi`, `tpws`, upstream `zapret.service`
   veya TUN kuran bir VPN aynı anda açıksa kuyruk çakışır.
 - **Sistemde zaten upstream zapret kurulu** (`/opt/zapret`, `zapret.service`):

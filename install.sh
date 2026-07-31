@@ -105,7 +105,7 @@ install_packages() {
 	case "$PKG_MGR" in
 	pacman)
 		todo=(nftables iproute2 python-gobject libadwaita gtk4 polkit bind
-		      gcc make pkgconf git curl luajit libnetfilter_queue libnfnetlink
+		      gcc make pkgconf git curl luajit libcap libnetfilter_queue libnfnetlink
 		      libmnl zlib dnscrypt-proxy)
 		# Zaten sağlanmış olanları listeden düşür. pacman -T "provides"
 		# ilişkisini de görür: örn. zlib'i zlib-ng-compat sağlıyorsa zlib
@@ -116,18 +116,18 @@ install_packages() {
 		export DEBIAN_FRONTEND=noninteractive
 		apt-get update -qq || warn "apt-get update başarısız"
 		todo=(nftables iproute2 python3-gi gir1.2-adw-1 gir1.2-gtk-4.0 policykit-1
-		      dnsutils build-essential pkg-config git curl libluajit-5.1-dev
+		      dnsutils build-essential pkg-config git curl libluajit-5.1-dev libcap-dev
 		      libnetfilter-queue-dev libnfnetlink-dev libmnl-dev zlib1g-dev
 		      dnscrypt-proxy)
 		;;
 	dnf)
 		todo=(nftables iproute python3-gobject libadwaita gtk4 polkit bind-utils
-		      gcc make pkgconf git curl luajit-devel libnetfilter_queue-devel
+		      gcc make pkgconf git curl luajit-devel libcap-devel libnetfilter_queue-devel
 		      libnfnetlink-devel libmnl-devel zlib-devel dnscrypt-proxy)
 		;;
 	zypper)
 		todo=(nftables iproute2 python3-gobject libadwaita-1-0 gtk4-tools polkit
-		      bind-utils gcc make pkg-config git curl luajit-devel
+		      bind-utils gcc make pkg-config git curl luajit-devel libcap-devel
 		      libnetfilter_queue-devel libnfnetlink-devel libmnl-devel zlib-devel
 		      dnscrypt-proxy)
 		;;

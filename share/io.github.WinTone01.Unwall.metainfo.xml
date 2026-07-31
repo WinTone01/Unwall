@@ -63,6 +63,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.3.1" date="2026-07-31">
+      <description>
+        <p>Fixed a false DNS-poisoning positive, added a Fedora build dependency, and made gateway mode force LAN DNS through the local resolver.</p>
+      </description>
+    </release>
     <release version="1.3.0" date="2026-07-31">
       <description>
         <p>Added AppImage packaging.</p>

@@ -235,12 +235,23 @@ NAT router for the local network (`ip_forward` + `nft masquerade`) and the
 forwarded traffic goes through zapret as well. The Npcap + `go-pcap2socks`
 layer used on Windows is not needed; routing is done by the kernel.
 
+DNS is handled the same way `go-pcap2socks` handled it on Windows, just with
+a kernel rule instead of a bundled proxy: an nftables rule transparently
+redirects every DNS query (TCP and UDP, port 53) coming from the LAN to this
+machine's own resolver — the same one it uses itself, including encrypted
+DNS if you've turned that on. **Whatever DNS server the device is configured
+with is ignored**; if your ISP blocks port 53 outbound, that's exactly why
+this exists — the device's packets never actually leave your network toward
+that address, they get rewritten to this machine before they do.
+
 In the manual network settings of the device (PlayStation, Xbox, Switch, TV):
 
 - **IP address**: a free address on your network (e.g. `192.168.1.50`)
 - **Subnet mask**: same as your network (usually `255.255.255.0`)
 - **Gateway**: this computer's LAN IP (shown in the "LAN adresi" row of the GUI)
-- **DNS**: `1.1.1.1` / `8.8.8.8`
+- **DNS**: any valid-looking value works (e.g. `1.1.1.1`) — most devices
+  refuse to proceed with an empty DNS field, but the actual value is
+  overridden by the redirect above
 
 Note: if a firewall such as `firewalld` or `ufw` drops packets in the `forward`
 chain by default, you need to allow forwarding.
@@ -312,6 +323,15 @@ UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
   `sudo nft list table ip unwall`; if the hostlist mode is `manual`, make
   sure the domain is in the list.
 - **QUIC/HTTP3 sites broke**: set `PORTS_UDP=` (empty) in the configuration.
+- **`Automatic (zapret learns)` hostlist mode isn't adding new domains**:
+  it only adds a domain after it sees a recognizable "blocked connection"
+  pattern (by default: 3 failures within 60 seconds — TCP retransmits, or
+  at least 4 outgoing/at most 1 incoming UDP packets) for a domain that
+  *isn't already desynced*. If your strategy already gets through cleanly,
+  that pattern never happens and the domain is correctly never added — this
+  isn't a bug, it just means auto-learning has nothing to learn from. Watch
+  `sudo tail -f /var/log/unwall/hostlist-auto.log` while browsing to a
+  blocked site to see what the engine is actually observing.
 - **Another DPI tool is running**: `byedpi`, `tpws`, the upstream
   `zapret.service` or a VPN that creates a TUN device will fight over the queue.
 - **Upstream zapret is already installed** (`/opt/zapret`, `zapret.service`):

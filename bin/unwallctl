@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.0"
+VERSION="1.3.1"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -238,6 +238,15 @@ detect_wan() {
 	ip -4 route show default 2>/dev/null | awk '/dev/ {for(i=1;i<=NF;i++) if($i=="dev") {print $(i+1); exit}}'
 }
 
+# Bu makinenin şu an fiilen kullandığı DNS çözümleyicisinin adresini
+# döndürür (/etc/resolv.conf'un ilk nameserver satırı). systemd-resolved
+# kullanılıyorsa bu genelde 127.0.0.53'tür ve zaten şifreli DNS'e (varsa)
+# zincirlenir; ağ geçidi modunda LAN'daki cihazların DNS sorgularını
+# buraya yönlendirerek istemcinin kendi DNS ayarını anlamsız kılarız.
+detect_local_resolver() {
+	awk '/^nameserver[[:space:]]/ {print $2; exit}' /etc/resolv.conf 2>/dev/null
+}
+
 nft_ruleset() {
 	# Kuyruk kuralları postrouting'e yazılır: hem yerel çıkış (output) hem de
 	# ağ geçidi modundaki yönlendirilen (forward) trafiği tek yerde yakalar.
@@ -270,6 +279,21 @@ nft_ruleset() {
 		printf '\t\ttype nat hook postrouting priority srcnat; policy accept;\n'
 		printf '\t\toifname "%s" masquerade\n' "$wan"
 		printf '\t}\n'
+
+		# LAN'daki cihazların (konsol, TV) DNS sorgularını, ne yazdıklarına
+		# bakmaksızın bu makinenin kendi çözümleyicisine yönlendirir.
+		# Bunu olmadan cihaz kendi ayarındaki DNS'e (genelde ISS'ninkine)
+		# gider; ISS port 53'ü engelliyorsa ya da DNS'i zehirliyorsa
+		# şifreli DNS burada devre dışı kalmış olur (bkz. Windows
+		# sürümündeki go-pcap2socks'un yaptığı iş).
+		local resolver; resolver="$(detect_local_resolver)"
+		if [ -n "$resolver" ]; then
+			printf '\tchain dns_redirect {\n'
+			printf '\t\ttype nat hook prerouting priority dstnat; policy accept;\n'
+			printf '\t\tiifname != "%s" udp dport 53 dnat to %s:53\n' "$wan" "$resolver"
+			printf '\t\tiifname != "%s" tcp dport 53 dnat to %s:53\n' "$wan" "$resolver"
+			printf '\t}\n'
+		fi
 	fi
 	printf '}\n'
 }
@@ -289,6 +313,17 @@ cmd_nft_apply() {
 		if [ "$ENABLE_IPV6" = "1" ]; then
 			sysctl -qw net.ipv6.conf.all.forwarding=1
 		fi
+		# DNS yönlendirmesi (bkz. nft_ruleset) hedefi 127.0.0.53 gibi bir
+		# loopback adresiyse, çekirdek varsayılan olarak dışarıdan (LAN'dan)
+		# gelen paketleri loopback'e DNAT etmeyi "martian" sayıp düşürür.
+		# route_localnet bunu açar; başka bir aracın da devre dışı
+		# bırakmasını önlemek için LAN arayüzünde de ayarlıyoruz.
+		local resolver; resolver="$(detect_local_resolver)"
+		case "$resolver" in
+		127.*)
+			sysctl -qw net.ipv4.conf.all.route_localnet=1
+			;;
+		esac
 	fi
 	return 0
 }
@@ -338,6 +373,14 @@ build_engine_cmd() {
 	auto)
 		touch "$UW_ETC/autohostlist.txt" 2>/dev/null || true
 		args+=("--hostlist-auto=$UW_ETC/autohostlist.txt")
+		# hostlist-auto bir alan adını yalnızca aynı motor profili içinde
+		# UW_ETC/log/hostlist-auto.log tanınabilir bir "başarısız bağlantı"
+		# örüntüsü (60 sn içinde 3 başarısızlık, TCP retrans ya da UDP
+		# giden≥4/gelen≤1 - motorun kendi varsayılanları) gördüğünde ekler.
+		# Strateji zaten işe yarıyorsa böyle bir örüntü hiç oluşmaz ve
+		# domain haklı olarak eklenmez. Sorun giderme için:
+		mkdir -p "$UW_LOG" 2>/dev/null || true
+		args+=("--hostlist-auto-debug=$UW_LOG/hostlist-auto.log")
 		;;
 	manual)
 		[ -s "$UW_ETC/hostlist.txt" ] || die "hostlist.txt boş: $UW_ETC/hostlist.txt"
@@ -734,18 +777,49 @@ dns_test() {
 # Teşhis
 # =====================================================================
 
+# Referans yanıtı Cloudflare'in DoH JSON API'sinden (443/tcp) alır.
+# Bilerek düz metin port 53 KULLANMIYORUZ: birçok ISS (bu arada Türk
+# operatörleri de) port 53'e giden HER paketi hedef IP'ye bakmaksızın
+# yakalayıp kendi yanıtını döndürür. Böyle bir ağda "dig @1.1.1.1 ..."
+# aslında 1.1.1.1'e hiç ulaşmaz; ISS'nin kendi (zehirli) yanıtını alır.
+# Sonuç: gerçekte düzgün çalışan şifreli DNS (DoH/DoT) yanlışlıkla
+# "zehirlenmiş" olarak işaretlenir, çünkü referansın kendisi zehirlidir.
+# DoH sorgusu 443/tcp üzerinden TLS ile gittiği için bu müdahaleye kapalı.
+dns_reference_lookup() {
+	local dom="$1"
+	command -v curl >/dev/null 2>&1 || return 1
+	curl -s --max-time 3 -H 'accept: application/dns-json' \
+		"https://cloudflare-dns.com/dns-query?name=$dom&type=A" 2>/dev/null |
+	python3 -c '
+import json, sys
+try:
+	d = json.load(sys.stdin)
+except Exception:
+	sys.exit(0)
+for a in d.get("Answer", []) or []:
+	if a.get("type") == 1:
+		print(a["data"])
+' 2>/dev/null
+}
+
 cmd_dnscheck() {
-	# ISS DNS'e müdahale ediyor mu? Sistem çözümleyicisi ile 1.1.1.1
-	# yanıtlarını karşılaştırırız; kesişim yoksa müdahale var demektir.
+	# ISS DNS'e müdahale ediyor mu? Sistem çözümleyicisi ile şifreli bir
+	# referans sorgusunun yanıtlarını karşılaştırırız; kesişim yoksa
+	# müdahale var demektir.
 	local dom="${1:-updates.discord.com}"
 	local sys ref
 
 	if command -v dig >/dev/null 2>&1; then
 		sys="$(dig +short +time=3 +tries=1 "$dom" A 2>/dev/null | grep -E '^[0-9.]+$' || true)"
-		ref="$(dig +short +time=3 +tries=1 @1.1.1.1 "$dom" A 2>/dev/null | grep -E '^[0-9.]+$' || true)"
 	else
 		sys="$(getent ahostsv4 "$dom" 2>/dev/null | awk '{print $1}' | sort -u || true)"
-		ref=""
+	fi
+	ref="$(dns_reference_lookup "$dom" | grep -E '^[0-9.]+$' || true)"
+	if [ -z "$ref" ] && command -v dig >/dev/null 2>&1; then
+		# DoH'a da ulaşılamadıysa (örn. curl/python3 yok), en azından bir
+		# şey göstermek için düz port 53'e düşer; bu yol ISS müdahalesine
+		# açıktır, sonucu ona göre değerlendirin.
+		ref="$(dig +short +time=3 +tries=1 @1.1.1.1 "$dom" A 2>/dev/null | grep -E '^[0-9.]+$' || true)"
 	fi
 
 	printf 'domain=%s\nsystem=%s\nreference=%s\n' "$dom" "$(echo "$sys" | tr '\n' ' ')" "$(echo "$ref" | tr '\n' ' ')"
@@ -844,6 +918,7 @@ build_prereq_check() {
 		|| missing="$missing libnfnetlink"
 	have_lib libmnl libmnl libmnl/libmnl.h || missing="$missing libmnl"
 	have_lib zlib zlib zlib.h || missing="$missing zlib"
+	have_lib libcap libcap sys/capability.h || missing="$missing libcap"
 	if [ "$which" = "zapret2" ] || [ "$which" = "all" ]; then
 		have_lib luajit luajit "" || missing="$missing luajit"
 	fi
@@ -860,6 +935,7 @@ build_prereq_check() {
 		case "$missing" in *libnfnetlink*)       deb="$deb libnfnetlink-dev" ;; esac
 		case "$missing" in *libmnl*)             deb="$deb libmnl-dev" ;; esac
 		case "$missing" in *zlib*)               deb="$deb zlib1g-dev" ;; esac
+		case "$missing" in *libcap*)              deb="$deb libcap-dev" ;; esac
 		case "$missing" in *luajit*)             deb="$deb libluajit-5.1-dev" ;; esac
 		echo "    sudo apt install$deb"
 	elif command -v dnf >/dev/null 2>&1; then
@@ -868,6 +944,7 @@ build_prereq_check() {
 		case "$missing" in *libnfnetlink*)       rpm="$rpm libnfnetlink-devel" ;; esac
 		case "$missing" in *libmnl*)             rpm="$rpm libmnl-devel" ;; esac
 		case "$missing" in *zlib*)               rpm="$rpm zlib-devel" ;; esac
+		case "$missing" in *libcap*)              rpm="$rpm libcap-devel" ;; esac
 		case "$missing" in *luajit*)             rpm="$rpm luajit-devel" ;; esac
 		echo "    sudo dnf install$rpm"
 	fi
