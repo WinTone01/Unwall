@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.3.3"
+VERSION = "1.3.4"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -36,6 +36,27 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, "gui.conf")
 # başlatmalarda ağa çıkılmaz.
 UPDATE_CACHE_FILE = os.path.join(CONFIG_DIR, "update-check.json")
 UPDATE_CHECK_INTERVAL = 24 * 3600
+UPDATE_REPO = "WinTone01/Unwall"
+
+# "Şimdi güncelle" düğmesinin çalıştırdığı betik. $1 = repo, $2 = sürüm.
+# unwallctl'in kendi self-update komutuyla aynı işi yapar ama ondan
+# tamamen bağımsızdır: kurulu unwallctl eski (self-update'ten önceki bir
+# sürüm) olsa bile çalışır.
+UPDATE_BOOTSTRAP_SCRIPT = r"""
+set -e
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+echo "==> v$2 indiriliyor"
+curl -fsSL "https://github.com/$1/archive/refs/tags/v$2.tar.gz" -o "$tmp/u.tar.gz"
+tar -xzf "$tmp/u.tar.gz" -C "$tmp"
+srcdir="$(find "$tmp" -maxdepth 1 -mindepth 1 -type d | head -1)"
+if [ -z "$srcdir" ] || [ ! -x "$srcdir/install.sh" ]; then
+	echo "indirilen arşivde install.sh bulunamadı" >&2
+	exit 1
+fi
+echo "==> v$2 kuruluyor"
+"$srcdir/install.sh" --yes --no-deps --no-build
+"""
 
 
 def _detect_lang():
@@ -560,8 +581,9 @@ class Window(Adw.ApplicationWindow):
             f"GATEWAY_MODE={'1' if self.row_gateway.get_active() else '0'}",
         ]
 
-    def run_privileged(self, args, done=None, title=None):
-        """pkexec ile ctl çalıştırır, çıktıyı konsola akıtır."""
+    def run_privileged(self, args, done=None, title=None, raw_argv=None):
+        """pkexec ile ctl (ya da raw_argv verilmişse başka bir komut)
+        çalıştırır, çıktıyı konsola akıtır."""
         if self._busy:
             self.toast(T("Another operation is in progress"))
             return
@@ -576,9 +598,13 @@ class Window(Adw.ApplicationWindow):
             # Sandbox içinde pkexec'in kendisi de host'ta çalışmalı: sistemin
             # gerçek polkit ajanı böyle devreye girer. Sandbox'ın kendi
             # pkexec'i (varsa) host polkit'e erişemez.
+            argv = (
+                [*HOST_PREFIX, "pkexec", *raw_argv]
+                if raw_argv is not None
+                else [*HOST_PREFIX, "pkexec", CTL, f"--lang={LANG}", *args]
+            )
             proc = Gio.Subprocess.new(
-                [*HOST_PREFIX, "pkexec", CTL, f"--lang={LANG}", *args],
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE,
+                argv, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE,
             )
         except GLib.Error as exc:
             self._finish_busy()
@@ -732,9 +758,16 @@ class Window(Adw.ApplicationWindow):
                 Gio.AppInfo.launch_default_for_uri(self._update_url, None)
             return
         self.update_banner.set_revealed(False)
+        # `unwallctl self-update` DEĞİL: eski bir kuruluma sahip birinin
+        # düğmeye ilk bastığında kurulu unwallctl'de self-update henüz
+        # olmayabilir (tam da güncellemesi gereken şey). Bu yüzden GUI
+        # kendi indirme+kurulum betiğini doğrudan pkexec ile çalıştırır -
+        # kurulu unwallctl'in sürümünden tamamen bağımsız, her zaman işler.
         self.run_privileged(
-            ["self-update", self._update_latest],
+            [],
             title=T("update to {}").format(self._update_latest),
+            raw_argv=["bash", "-c", UPDATE_BOOTSTRAP_SCRIPT, "bash",
+                      UPDATE_REPO, self._update_latest],
             done=lambda code: self._start_update_check(force=True) if code == 0 else None,
         )
 

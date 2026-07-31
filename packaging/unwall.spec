@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.3.3
+Version:        1.3.4
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.4-1
+- Fix Update now button depending on unwallctl self-update already existing (chicken-and-egg on old installs).
 * Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.3-1
 - Add unwallctl self-update and a GUI "Update now" button; fix stale update-check cache after rapid releases.
 * Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.2-1
