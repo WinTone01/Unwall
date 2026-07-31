@@ -21,7 +21,7 @@ Flatpak repo instead.
 ## Build
 
 ```bash
-flatpak install flathub org.gnome.Platform//47 org.gnome.Sdk//47
+flatpak install flathub org.gnome.Platform//49 org.gnome.Sdk//49
 flatpak-builder --force-clean --user --install build-dir \
     io.github.WinTone01.Unwall.yml
 ```

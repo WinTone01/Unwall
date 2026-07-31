@@ -6,4 +6,5 @@ packaging/*.deb
 packaging/RPMS/
 flatpak/build-dir/
 flatpak/.flatpak-builder/
+flatpak/repo/
 *.flatpak

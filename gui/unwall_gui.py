@@ -1045,7 +1045,21 @@ def main():
         return 1
 
     log.info("Unwall %s starting (lang: %s, ctl: %s)", VERSION, LANG, CTL)
-    if not os.path.exists(CTL):
+    if IN_FLATPAK:
+        # CTL burada host PATH'inde aranacak çıplak bir komut adı; sandbox
+        # içinden os.path.exists() ile denetlemek anlamsız, hep yanlış
+        # "bulunamadı" sonucu verir. Varlığını flatpak-spawn ile kontrol
+        # ediyoruz.
+        found = subprocess.run(
+            [*HOST_PREFIX, "sh", "-c", f"command -v {CTL}"],
+            capture_output=True,
+        ).returncode == 0
+        if not found:
+            log.error(
+                "%s not found on the host. Install the native backend first "
+                "(install.sh or one of the packages under packaging/).", CTL
+            )
+    elif not os.path.exists(CTL):
         log.error("%s not found. Run: sudo ./install.sh", CTL)
 
     app = App()

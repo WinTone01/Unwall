@@ -13,7 +13,6 @@ URL:             https://github.com/WinTone01/Unwall
 Source0:        https://github.com/WinTone01/Unwall/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
 
 BuildArch:      noarch
-BuildRequires:  systemd-rpm-macros
 
 Requires:       nftables
 Requires:       iproute
@@ -55,18 +54,18 @@ After installing this package, build the engines once with:
 %install
 install -Dm755 bin/unwallctl %{buildroot}%{_bindir}/unwallctl
 sed -i \
-	-e 's|^UW_LIB=.*|UW_LIB="${UW_LIB:-%{_libdir}/unwall}"|' \
+	-e 's|^UW_LIB=.*|UW_LIB="${UW_LIB:-/usr/lib/unwall}"|' \
 	-e 's|^UW_ETC=.*|UW_ETC="${UW_ETC:-%{_sysconfdir}/unwall}"|' \
 	-e 's|^UW_OPT=.*|UW_OPT="${UW_OPT:-/opt/unwall}"|' \
 	-e 's|^UW_LOG=.*|UW_LOG="${UW_LOG:-/var/log/unwall}"|' \
 	%{buildroot}%{_bindir}/unwallctl
 
 install -Dm755 bin/unwall %{buildroot}%{_bindir}/unwall
-sed -i 's|^UW_LIB=.*|UW_LIB="${UW_LIB:-%{_libdir}/unwall}"|' \
+sed -i 's|^UW_LIB=.*|UW_LIB="${UW_LIB:-/usr/lib/unwall}"|' \
 	%{buildroot}%{_bindir}/unwall
 
-install -Dm644 gui/unwall_gui.py %{buildroot}%{_libdir}/unwall/unwall_gui.py
-install -Dm644 lib/strategies.conf %{buildroot}%{_libdir}/unwall/strategies.conf
+install -Dm644 gui/unwall_gui.py %{buildroot}/usr/lib/unwall/unwall_gui.py
+install -Dm644 lib/strategies.conf %{buildroot}/usr/lib/unwall/strategies.conf
 
 install -Dm644 etc/unwall.conf %{buildroot}%{_sysconfdir}/unwall/unwall.conf
 install -Dm644 hostlist.txt %{buildroot}%{_sysconfdir}/unwall/hostlist.txt
@@ -77,7 +76,7 @@ sed -e 's|@BINDIR@|%{_bindir}|g' -e 's|@ETCDIR@|%{_sysconfdir}/unwall|g' \
 	-e 's|@LOGDIR@|/var/log/unwall|g' systemd/unwall.service \
 	> %{_builddir}/unwall.service
 install -Dm644 %{_builddir}/unwall.service \
-	%{buildroot}%{_unitdir}/unwall.service
+	%{buildroot}/usr/lib/systemd/system/unwall.service
 
 sed 's|@BINDIR@|%{_bindir}|g' polkit/io.github.WinTone01.Unwall.policy \
 	> %{_builddir}/io.github.WinTone01.Unwall.policy
@@ -148,12 +147,12 @@ fi
 %doc README.md README.tr.md
 %{_bindir}/unwallctl
 %{_bindir}/unwall
-%{_libdir}/unwall/
+/usr/lib/unwall/
 %config(noreplace) %{_sysconfdir}/unwall/unwall.conf
 %config(noreplace) %{_sysconfdir}/unwall/hostlist.txt
 %config(noreplace) %{_sysconfdir}/unwall/excludelist.txt
 %config(noreplace) %{_sysconfdir}/unwall/autohostlist.txt
-%{_unitdir}/unwall.service
+/usr/lib/systemd/system/unwall.service
 %{_datadir}/polkit-1/actions/io.github.WinTone01.Unwall.policy
 %{_datadir}/applications/io.github.WinTone01.Unwall.desktop
 %{_datadir}/icons/hicolor/scalable/apps/io.github.WinTone01.Unwall.svg

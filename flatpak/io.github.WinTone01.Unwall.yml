@@ -1,6 +1,6 @@
 app-id: io.github.WinTone01.Unwall
 runtime: org.gnome.Platform
-runtime-version: "47"
+runtime-version: "49"
 sdk: org.gnome.Sdk
 command: unwall
 
