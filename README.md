@@ -144,10 +144,20 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `unwallctl doctor` | environment and conflict diagnostics |
 | `sudo unwallctl disable-conflicts` | shut down conflicting DPI tools |
 | `unwallctl print-cmd`, `print-nft` | show the generated command and rules |
+| `unwallctl update-check` | check GitHub for a newer release (key=value) |
 
 Configuration: `/etc/unwall/unwall.conf`
 Lists: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
 Logs: `journalctl -u unwall -f` and `/var/log/unwall/`
+
+The GUI checks GitHub for a newer release once a day in the background (no
+network access is required otherwise) and shows a dismissible banner with a
+link to the release when one is found. Force a check from the menu
+(**Check for updates**) or from the terminal:
+
+```bash
+unwallctl update-check
+```
 
 ## Encrypted DNS (the YogaDNS equivalent)
 

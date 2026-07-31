@@ -143,10 +143,20 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `unwallctl doctor` | ortam / çakışma teşhisi |
 | `sudo unwallctl disable-conflicts` | çakışan DPI araçlarını kapat |
 | `unwallctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
+| `unwallctl update-check` | GitHub'da yeni sürüm var mı bak (key=value) |
 
 Ayar dosyası: `/etc/unwall/unwall.conf`
 Listeler: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
 Günlükler: `journalctl -u unwall -f` ve `/var/log/unwall/`
+
+Arayüz günde bir kez arka planda GitHub'da yeni sürüm olup olmadığına bakar
+(aksi halde hiç ağa çıkmaz) ve bulursa kapatılabilir bir bant içinde sürüm
+bağlantısını gösterir. Menüden (**Güncellemeleri denetle**) ya da terminalden
+elle tetiklenebilir:
+
+```bash
+unwallctl update-check
+```
 
 ## Şifreli DNS (YogaDNS karşılığı)
 

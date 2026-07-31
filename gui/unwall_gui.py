@@ -6,11 +6,13 @@ Arayüz normal kullanıcı olarak çalışır. Ayrıcalık gerektiren her iş
 root olarak çalıştırılmamalıdır.
 """
 
+import json
 import logging
 import os
 import shutil
 import subprocess
 import sys
+import time
 import traceback
 
 import gi
@@ -29,6 +31,11 @@ CONFIG_DIR = os.path.join(
     "unwall",
 )
 CONFIG_FILE = os.path.join(CONFIG_DIR, "gui.conf")
+
+# GitHub sürüm kontrolü: sonuç günde bir kez taze tutulur, aradaki
+# başlatmalarda ağa çıkılmaz.
+UPDATE_CACHE_FILE = os.path.join(CONFIG_DIR, "update-check.json")
+UPDATE_CHECK_INTERVAL = 24 * 3600
 
 
 def _detect_lang():
@@ -130,6 +137,11 @@ TR = {
     'Test': 'Sına',
     'The operation failed (see the output)': 'İşlem hata ile bitti (çıktıya bakın)',
     'Unwall': 'Unwall',
+    'A new version is available: {}': 'Yeni bir sürüm var: {}',
+    'View release': 'Sürümü görüntüle',
+    'Check for updates': 'Güncellemeleri denetle',
+    "You're up to date ({})": 'Güncelsiniz ({})',
+    'Could not check for updates (offline?)': "Güncelleme kontrolü yapılamadı (çevrimdışı olabilir)",
     'build engines': 'motorları derle',
     'disable encrypted DNS': 'şifreli DNS kapat',
     'enable encrypted DNS': 'şifreli DNS aç',
@@ -277,6 +289,7 @@ class Window(Adw.ApplicationWindow):
         menu.append(T("Diagnostics"), "win.doctor")
         menu.append(T("DNS check"), "win.dnscheck")
         menu.append(T("Build / update engines"), "win.build")
+        menu.append(T("Check for updates"), "win.check-updates")
         menu.append(T("About"), "win.about")
 
         lang_menu = Gio.Menu()
@@ -295,6 +308,7 @@ class Window(Adw.ApplicationWindow):
             ("dnscheck", self.on_dnscheck),
             ("build", self.on_build),
             ("about", self.on_about),
+            ("check-updates", self.on_check_updates),
             ("lang-en", lambda *_a: self.set_language("en")),
             ("lang-tr", lambda *_a: self.set_language("tr")),
         ):
@@ -315,6 +329,17 @@ class Window(Adw.ApplicationWindow):
             ),
         )
         toolbar.add_top_bar(self.banner)
+
+        # Yeni sürüm çıktıysa üstte ikinci bir bant (çakışma bandından ayrı,
+        # ikisi aynı anda görünebilir)
+        self.update_banner = Adw.Banner(
+            title="",
+            button_label=T("View release"),
+            revealed=False,
+        )
+        self._update_url = ""
+        self.update_banner.connect("button-clicked", self._on_update_banner_clicked)
+        toolbar.add_top_bar(self.update_banner)
 
         page = Adw.PreferencesPage()
         toolbar.set_content(page)
@@ -473,6 +498,8 @@ class Window(Adw.ApplicationWindow):
 
         self.refresh()
         GLib.timeout_add_seconds(4, self._tick)
+        # Sürüm kontrolü ilk yenilemeyi bekletmesin diye biraz sonra başlar.
+        GLib.timeout_add_seconds(2, self._start_update_check)
 
     # -----------------------------------------------------------------
     # yardımcılar
@@ -582,6 +609,87 @@ class Window(Adw.ApplicationWindow):
             self.refresh()
 
         stream.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
+
+    # -----------------------------------------------------------------
+    # GitHub sürüm kontrolü
+    # -----------------------------------------------------------------
+
+    def _start_update_check(self, force=False, notify=False):
+        """Günde bir kez ağa çıkar; aradaki başlatmalarda önbelleği kullanır."""
+        if not force:
+            cached = self._load_update_cache()
+            if cached and (time.time() - cached.get("checked_at", 0)) < UPDATE_CHECK_INTERVAL:
+                log.debug("update check: using cached result from %s", cached.get("checked_at"))
+                self._apply_update_result(cached)
+                return False
+
+        try:
+            proc = Gio.Subprocess.new(
+                [CTL, "update-check", "8"],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
+            )
+        except GLib.Error as exc:
+            log.debug("update check could not start: %s", exc.message)
+            if notify:
+                self.toast(T("Could not check for updates (offline?)"))
+            return False
+
+        proc.communicate_utf8_async(None, None, self._on_update_check_done, notify)
+        return False
+
+    def _on_update_check_done(self, proc, res, notify=False):
+        try:
+            ok, stdout, _stderr = proc.communicate_utf8_finish(res)
+        except GLib.Error as exc:
+            log.debug("update check failed: %s", exc.message)
+            if notify:
+                self.toast(T("Could not check for updates (offline?)"))
+            return
+        if not ok:
+            if notify:
+                self.toast(T("Could not check for updates (offline?)"))
+            return
+        info = parse_kv(stdout)
+        info["checked_at"] = time.time()
+        self._save_update_cache(info)
+        self._apply_update_result(info)
+        if notify and info.get("update_available") != "1":
+            self.toast(T("You're up to date ({})").format(info.get("current", VERSION)))
+
+    def on_check_updates(self, *_a):
+        self._start_update_check(force=True, notify=True)
+
+    def _load_update_cache(self):
+        try:
+            with open(UPDATE_CACHE_FILE) as fh:
+                return json.load(fh)
+        except (OSError, ValueError):
+            return None
+
+    def _save_update_cache(self, info):
+        try:
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            with open(UPDATE_CACHE_FILE, "w") as fh:
+                json.dump(info, fh)
+        except OSError as exc:
+            log.debug("could not write update cache: %s", exc)
+
+    def _apply_update_result(self, info):
+        if info.get("update_available") != "1" or not info.get("latest"):
+            return
+        self._update_url = info.get(
+            "url", "https://github.com/WinTone01/Unwall/releases/latest"
+        )
+        self.update_banner.set_title(
+            T("A new version is available: {}").format(info["latest"])
+        )
+        self.update_banner.set_revealed(True)
+        log.info("update available: %s -> %s", info.get("current"), info["latest"])
+
+    def _on_update_banner_clicked(self, *_):
+        if self._update_url:
+            Gio.AppInfo.launch_default_for_uri(self._update_url, None)
+        self.update_banner.set_revealed(False)
 
     # -----------------------------------------------------------------
     # durum yenileme

@@ -1010,6 +1010,73 @@ cmd_gateway_info() {
 }
 
 # =====================================================================
+# GitHub sürüm kontrolü
+# =====================================================================
+
+UPDATE_REPO="WinTone01/Unwall"
+
+# a > b ise 0, değilse 1 döner. Sürümler "X.Y.Z" biçiminde varsayılır.
+version_gt() {
+	[ "$1" = "$2" ] && return 1
+	local a1 a2 a3 b1 b2 b3 xa xb n
+
+	IFS=. read -r a1 a2 a3 _ <<-EOF
+	$1
+	EOF
+	IFS=. read -r b1 b2 b3 _ <<-EOF
+	$2
+	EOF
+
+	for n in "$a1:$b1" "$a2:$b2" "$a3:$b3"; do
+		xa="${n%%:*}"; xb="${n#*:}"
+		case "$xa" in ''|*[!0-9]*) xa=0 ;; esac
+		case "$xb" in ''|*[!0-9]*) xb=0 ;; esac
+		[ "$xa" -gt "$xb" ] && return 0
+		[ "$xa" -lt "$xb" ] && return 1
+	done
+	return 1
+}
+
+# update-check [zaman-aşımı-sn]
+# Ağ ve yetki gerektirmez. GitHub'daki en son sürümü VERSION ile karşılaştırır.
+cmd_update_check() {
+	local to="${1:-5}"
+	command -v curl >/dev/null 2>&1 || {
+		printf 'current=%s\nlatest=\nupdate_available=0\nerror=no_curl\n' "$VERSION"
+		return 1
+	}
+
+	# -f kullanmıyoruz: depoda henüz hiç sürüm yayınlanmamışsa GitHub 404
+	# döner ama gövdesi hâlâ ayrıştırılabilir JSON'dur ("no_release" olarak
+	# ele alınır). Asıl ağ hatalarını (bağlantı yok, zaman aşımı) curl'ün
+	# kendi çıkış koduyla ayırt ediyoruz.
+	local json curl_rc
+	json="$(curl -sSL --max-time "$to" \
+		-H 'Accept: application/vnd.github+json' \
+		"https://api.github.com/repos/$UPDATE_REPO/releases/latest" 2>/dev/null)"
+	curl_rc=$?
+	if [ "$curl_rc" -ne 0 ] || [ -z "$json" ]; then
+		printf 'current=%s\nlatest=\nupdate_available=0\nerror=network\n' "$VERSION"
+		return 1
+	fi
+
+	local latest
+	latest="$(printf '%s' "$json" |
+		sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+	latest="${latest#v}"
+
+	if [ -z "$latest" ]; then
+		printf 'current=%s\nlatest=\nupdate_available=0\nerror=no_release\n' "$VERSION"
+		return 0
+	fi
+
+	local newer=0
+	version_gt "$latest" "$VERSION" && newer=1
+	printf 'current=%s\nlatest=%s\nupdate_available=%s\nurl=https://github.com/%s/releases/latest\n' \
+		"$VERSION" "$latest" "$newer" "$UPDATE_REPO"
+}
+
+# =====================================================================
 
 usage() {
 	cat <<EOF
@@ -1039,6 +1106,7 @@ Kullanım: unwallctl <komut> [argüman]
   nft-apply | nft-flush     kuralları uygula/temizle (root)
   run-engine                motoru ön planda çalıştır (systemd kullanır)
   print-cmd | print-nft     üretilecek komutu/kuralları göster
+  update-check [zaman-aşımı-sn]   GitHub'da yeni sürüm var mı bak
 EOF
 }
 
@@ -1072,6 +1140,7 @@ main() {
 	print-nft)    cmd_print_nft ;;
 	nft-flush)    cmd_nft_flush ;;
 	run-engine)   cmd_run_engine ;;
+	update-check) cmd_update_check "$@" ;;
 	version|--version) printf '%s\n' "$VERSION" ;;
 	help|--help|-h|"") usage ;;
 	*) die "bilinmeyen komut: $cmd (yardım: unwallctl help)" ;;
