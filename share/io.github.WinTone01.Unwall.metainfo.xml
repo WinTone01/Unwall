@@ -63,6 +63,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.2.1" date="2026-07-31">
+      <description>
+        <p>Fixed rpm spec macros, moved the Flatpak to a supported GNOME runtime, and fixed a false "not found" message in the Flatpak build.</p>
+      </description>
+    </release>
     <release version="1.2.0" date="2026-07-31">
       <description>
         <p>Added .deb and .rpm packaging and a GUI-only Flatpak.</p>
