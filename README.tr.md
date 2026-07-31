@@ -4,6 +4,10 @@
 
 <h1 align="center">Unwall</h1>
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="Lisans: GPLv3"></a>
+</p>
+
 **Türkçe** · [English](README.md)
 
 @bol-van'ın DPI (Deep Packet Inspection) atlatma motorları
@@ -285,8 +289,18 @@ UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
   `/opt/zapret` ve `/opt/zapret2` ikilileri doğrudan kullanılabilir; motor
   bulunamazsa oralara da bakılır.
 
+## Lisans
+
+Unwall [GNU Genel Kamu Lisansı v3.0](LICENSE) ya da sonraki bir sürümü ile
+lisanslanmıştır. Çalıştırmakta, incelemekte, paylaşmakta ve değiştirmekte
+serbestsiniz; değiştirilmiş bir sürümü dağıtırsanız aynı lisans altında
+kalmalı ve kaynak koduyla birlikte gelmelidir.
+
 ## Teşekkürler
 
+- [@WinTone01](https://github.com/WinTone01) — Unwall'ı yazdı: Linux tarafının
+  tamamı (`unwallctl`, systemd/nftables/polkit entegrasyonu, GTK4 arayüz,
+  şifreli DNS, ağ geçidi modu, güncelleme denetleyicisi) ve projeyi sürdürüyor.
 - Bu projenin temelini oluşturan Windows sürümü
   [zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey) için
   geliştiricisi [@alimali54](https://github.com/alimali54)

@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -989,7 +989,7 @@ class Window(Adw.ApplicationWindow):
                 "(zapret-win-bundle + AutoIt)."
             ),
             website="https://github.com/WinTone01/unwall",
-            license_type=Gtk.License.MIT_X11,
+            license_type=Gtk.License.GPL_3_0,
             developers=["Unwall contributors"],
         )
         if hasattr(Adw, "AboutDialog"):

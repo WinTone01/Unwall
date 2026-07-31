@@ -5,7 +5,7 @@ pkgrel=1
 pkgdesc="GTK4 control panel for the zapret/nfqws DPI bypass engine"
 arch=('any')
 url="https://github.com/WinTone01/unwall"
-license=('MIT')
+license=('GPL3')
 depends=('nftables' 'python-gobject' 'libadwaita' 'gtk4' 'polkit' 'systemd' 'bind')
 makedepends=('git')
 optdepends=(
@@ -63,6 +63,7 @@ package() {
 		"$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.WinTone01.Unwall.svg"
 	install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 	install -Dm644 README.tr.md "$pkgdir/usr/share/doc/$pkgname/README.tr.md"
+	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 
 	echo 'nfnetlink_queue' > "$srcdir/modules.conf"
 	install -Dm644 "$srcdir/modules.conf" "$pkgdir/usr/lib/modules-load.d/unwall.conf"

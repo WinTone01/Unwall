@@ -4,6 +4,10 @@
 
 <h1 align="center">Unwall</h1>
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="License: GPLv3"></a>
+</p>
+
 **English** · [Türkçe](README.tr.md)
 
 A Linux control panel for [zapret](https://github.com/bol-van/zapret) and
@@ -284,8 +288,19 @@ UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
   `/opt/zapret` and `/opt/zapret2` binaries; they are looked up automatically
   when no locally built engine is found.
 
+## License
+
+Unwall is licensed under the
+[GNU General Public License v3.0](LICENSE) or later. You are free to run,
+study, share and modify it; if you distribute a modified version, it must
+stay under the same license and come with its source.
+
 ## Credits
 
+- [@WinTone01](https://github.com/WinTone01) — created Unwall: the Linux port
+  itself (`unwallctl`, the systemd/nftables/polkit integration, the GTK4
+  interface, encrypted DNS, gateway mode, the update checker) and maintains
+  the project.
 - [@alimali54](https://github.com/alimali54) for
   [zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey), the
   Windows version this project is based on
