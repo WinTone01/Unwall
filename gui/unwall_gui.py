@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -183,7 +183,20 @@ def _excepthook(exc_type, exc, tb):
 
 sys.excepthook = _excepthook
 
-CTL = os.environ.get("UW_CTL", shutil.which("unwallctl") or "/usr/local/bin/unwallctl")
+# Flatpak paketi yalnızca bu arayüzü içerir; unwallctl, systemd birimi ve
+# nftables kuralları host sistemde native olarak kurulu olmalıdır (bkz.
+# install.sh / .deb / .rpm / PKGBUILD). Sandbox içindeysek her komutu
+# `flatpak-spawn --host` ile host'a yolluyoruz; UW_FORCE_FLATPAK=1 bu
+# davranışı sandbox dışında da test etmek için kullanılabilir.
+IN_FLATPAK = os.path.exists("/.flatpak-info") or os.environ.get("UW_FORCE_FLATPAK") == "1"
+HOST_PREFIX = ["flatpak-spawn", "--host"] if IN_FLATPAK else []
+
+if IN_FLATPAK:
+    # Sandbox içinde shutil.which() ve varsayılan mutlak yollar host'u
+    # göremez; komut adını host'un PATH'ine bırakıyoruz.
+    CTL = os.environ.get("UW_CTL", "unwallctl")
+else:
+    CTL = os.environ.get("UW_CTL", shutil.which("unwallctl") or "/usr/local/bin/unwallctl")
 ETC_DIR = os.environ.get("UW_ETC", "/etc/unwall")
 
 HOSTLIST_MODES = [
@@ -239,7 +252,7 @@ def ctl(*args, timeout=15):
     try:
         env = dict(os.environ, UW_LANG=LANG)
         p = subprocess.run(
-            [CTL, f"--lang={LANG}", *args],
+            [*HOST_PREFIX, CTL, f"--lang={LANG}", *args],
             capture_output=True, text=True, timeout=timeout, env=env,
         )
         out = (p.stdout or "") + (p.stderr or "")
@@ -557,8 +570,11 @@ class Window(Adw.ApplicationWindow):
             self.log(f"\n=== {title} ===")
 
         try:
+            # Sandbox içinde pkexec'in kendisi de host'ta çalışmalı: sistemin
+            # gerçek polkit ajanı böyle devreye girer. Sandbox'ın kendi
+            # pkexec'i (varsa) host polkit'e erişemez.
             proc = Gio.Subprocess.new(
-                ["pkexec", CTL, f"--lang={LANG}", *args],
+                [*HOST_PREFIX, "pkexec", CTL, f"--lang={LANG}", *args],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE,
             )
         except GLib.Error as exc:
@@ -625,7 +641,7 @@ class Window(Adw.ApplicationWindow):
 
         try:
             proc = Gio.Subprocess.new(
-                [CTL, "update-check", "8"],
+                [*HOST_PREFIX, CTL, "update-check", "8"],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
             )
         except GLib.Error as exc:
@@ -976,7 +992,16 @@ class Window(Adw.ApplicationWindow):
         Window(app).present()
 
     def on_open_conf_dir(self, *_):
-        Gio.AppInfo.launch_default_for_uri(f"file://{ETC_DIR}", None)
+        # ETC_DIR sandbox dışında (host'ta) bir yol; içeriden doğrudan
+        # file:// açmak Flatpak'ta portal reddiyle sonuçlanır. Host'un kendi
+        # dosya yöneticisini flatpak-spawn ile tetikliyoruz.
+        if IN_FLATPAK:
+            try:
+                subprocess.Popen([*HOST_PREFIX, "xdg-open", ETC_DIR])
+            except OSError as exc:
+                log.warning("could not open %s on host: %s", ETC_DIR, exc)
+        else:
+            Gio.AppInfo.launch_default_for_uri(f"file://{ETC_DIR}", None)
 
     def on_about(self, *_):
         kwargs = dict(

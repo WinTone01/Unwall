@@ -1,0 +1,32 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+configure)
+	systemctl daemon-reload >/dev/null 2>&1 || true
+	if command -v update-desktop-database >/dev/null 2>&1; then
+		update-desktop-database -q /usr/share/applications || true
+	fi
+	if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+		gtk-update-icon-cache -qtf /usr/share/icons/hicolor || true
+	fi
+	if [ -z "$2" ]; then
+		# İlk kurulum. Hiçbir servis başlatılmadı, sistem ayarlarına
+		# dokunulmadı; motor, arayüzden ya da elle derlenmelidir.
+		cat <<-EOF
+
+		Unwall kuruldu. Motorlar henüz derlenmedi:
+
+		    sudo unwallctl build
+
+		Ardından uygulama menüsünden "Unwall" açılabilir ya da:
+
+		    unwallctl doctor
+		    sudo unwallctl start
+
+		EOF
+	fi
+	;;
+esac
+
+exit 0

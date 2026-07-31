@@ -78,7 +78,25 @@ Seçenekler: `--yes` (soru sorma), `--no-deps`, `--no-build`, `PREFIX=/usr`.
 Kurulumdan sonra uygulama menüsünde **Unwall** (Ağ kategorisi) belirir;
 oradan ya da `unwall` komutuyla açabilirsiniz.
 
-Arch/CachyOS için paket olarak kurmak isterseniz: `cd packaging && makepkg -si`
+### Dağıtım paketleri
+
+| Dağıtım | Komut |
+|---|---|
+| Arch / CachyOS | `cd packaging && makepkg -si` |
+| Debian / Ubuntu | `./packaging/build-deb.sh && sudo apt install ./packaging/unwall_*.deb` |
+| Fedora / openSUSE | `./packaging/build-rpm.sh && sudo dnf install ./packaging/RPMS/*.rpm` |
+| Flatpak (yalnızca arayüz) | bkz. [`flatpak/README.md`](flatpak/README.md) |
+
+`.deb` ve `.rpm` derleme betikleri sırasıyla `dpkg-dev` ve `rpm-build`
+(`rpmbuild`) gerektirir; bu depodan gerçek bir paket üretirler, hazır bir
+şey indirmezler. İki paket de tıpkı `install.sh` gibi davranır: siz
+arayüzden ya da `unwallctl` ile yapmadıkça hiçbir servis başlamaz, hiçbir
+sistem ayarına dokunulmaz.
+
+Flatpak ayrı bir durum: yalnızca GTK4 arayüzünü içerebilir, nftables/
+systemd/NFQUEUE kısmını değil; bu yüzden host'ta yukarıdaki paketlerden
+biri (ya da `install.sh`) zaten kurulu olmalı. Nedenini ve nasıl host'a
+ulaştığını [`flatpak/README.md`](flatpak/README.md) dosyasında bulabilirsiniz.
 
 **`zapret-turkey`'den yükseltme** (projenin eski adı): `./install.sh` yeterli.
 Eski servisi kapatır, `/etc/zapret-turkey` ve `/opt/zapret-turkey` dizinlerini
@@ -243,13 +261,16 @@ platformda aynıdır; yalnızca trafiği motora yönlendirme katmanı değişir.
 ```
 bin/unwallctl          ayrıcalıklı işlerin tamamı (CLI + polkit hedefi)
 bin/unwall             GUI başlatıcı
-gui/unwall_gui.py      GTK4 / libadwaita arayüzü
-lib/strategies.conf           hazır strateji profilleri
+gui/unwall_gui.py      GTK4 / libadwaita arayüzü (host-farkında: Flatpak'tan da çalışır)
+lib/strategies.conf    hazır strateji profilleri
 etc/unwall.conf        varsayılan yapılandırma
 systemd/unwall.service systemd birimi
-polkit/…policy                yetki yükseltme politikası
-packaging/PKGBUILD            Arch paketi
-docs/screenshots/             arayüz görselleri
+polkit/…policy         yetki yükseltme politikası
+packaging/PKGBUILD     Arch paketi
+packaging/debian/      .deb kontrol dosyaları (bkz. build-deb.sh)
+packaging/unwall.spec  Fedora/openSUSE .rpm spec (bkz. build-rpm.sh)
+flatpak/                Arayüz için Flatpak manifesti (bkz. flatpak/README.md)
+docs/screenshots/      arayüz görselleri
 ```
 
 ## Sorun giderme

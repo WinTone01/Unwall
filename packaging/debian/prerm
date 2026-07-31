@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+remove|deconfigure)
+	systemctl disable --now unwall.service >/dev/null 2>&1 || true
+	if [ -x /usr/bin/unwallctl ]; then
+		unwallctl nft-flush >/dev/null 2>&1 || true
+		unwallctl dns disable >/dev/null 2>&1 || true
+	fi
+	;;
+esac
+
+exit 0

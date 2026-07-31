@@ -78,7 +78,25 @@ Options: `--yes` (no questions), `--no-deps`, `--no-build`, `PREFIX=/usr`.
 After installation, **Unwall** appears in your application menu (Network
 category); launch it from there or with the `unwall` command.
 
-To install as an Arch/CachyOS package: `cd packaging && makepkg -si`
+### Distro packages
+
+| Distro | Command |
+|---|---|
+| Arch / CachyOS | `cd packaging && makepkg -si` |
+| Debian / Ubuntu | `./packaging/build-deb.sh && sudo apt install ./packaging/unwall_*.deb` |
+| Fedora / openSUSE | `./packaging/build-rpm.sh && sudo dnf install ./packaging/RPMS/*.rpm` |
+| Flatpak (GUI only) | see [`flatpak/README.md`](flatpak/README.md) |
+
+The `.deb` and `.rpm` build scripts need `dpkg-dev` and `rpm-build` (or
+`rpmbuild`) respectively; they produce a real package from this repository,
+they do not download anything prebuilt. Both packages behave exactly like
+`install.sh`: no service is started and no system setting is touched until
+you do it from the GUI or with `unwallctl`.
+
+The Flatpak is a separate case: it can only contain the GTK4 interface, not
+the nftables/systemd/NFQUEUE parts, so it still needs one of the packages
+above (or `install.sh`) installed on the host first. See
+[`flatpak/README.md`](flatpak/README.md) for why and how it reaches the host.
 
 **Upgrading from `zapret-turkey`** (the previous name of this project): just run
 `./install.sh`. It disables the old service, moves `/etc/zapret-turkey` and
@@ -241,13 +259,16 @@ traffic into the engine differs.
 ```
 bin/unwallctl          all privileged work (CLI + polkit target)
 bin/unwall             GUI launcher
-gui/unwall_gui.py      GTK4 / libadwaita interface
-lib/strategies.conf           ready-made strategy profiles
+gui/unwall_gui.py      GTK4 / libadwaita interface (host-aware: works from a Flatpak too)
+lib/strategies.conf    ready-made strategy profiles
 etc/unwall.conf        default configuration
 systemd/unwall.service systemd unit
-polkit/…policy                privilege escalation policy
-packaging/PKGBUILD            Arch package
-docs/screenshots/             interface screenshots
+polkit/…policy         privilege escalation policy
+packaging/PKGBUILD     Arch package
+packaging/debian/      .deb control files (see build-deb.sh)
+packaging/unwall.spec  Fedora/openSUSE .rpm spec (see build-rpm.sh)
+flatpak/                Flatpak manifest for the GUI (see flatpak/README.md)
+docs/screenshots/      interface screenshots
 ```
 
 ## Troubleshooting

@@ -1,0 +1,18 @@
+Package: unwall
+Version: __VERSION__
+Section: net
+Priority: optional
+Architecture: all
+Maintainer: WinTone01 <wintone01@users.noreply.github.com>
+Homepage: https://github.com/WinTone01/Unwall
+Depends: nftables, iproute2, python3-gi, gir1.2-adw-1, gir1.2-gtk-4.0, policykit-1, dnsutils, build-essential, pkg-config, git, curl, libluajit-5.1-dev, libnetfilter-queue-dev, libnfnetlink-dev, libmnl-dev, zlib1g-dev
+Recommends: dnscrypt-proxy
+Description: GTK4 control panel for the zapret/nfqws DPI bypass engine
+ Unwall is a Linux control panel for zapret and zapret2, the DPI (Deep
+ Packet Inspection) bypass engines by bol-van. It wraps the engine with a
+ systemd service, nftables rules, encrypted DNS (DoH/DoT), gateway mode
+ for consoles and smart TVs, and ready-made carrier presets, driven by a
+ GTK4 interface that never runs as root.
+ .
+ After installing this package, build the engines once with:
+ sudo unwallctl build

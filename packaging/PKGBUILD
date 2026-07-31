@@ -1,10 +1,10 @@
-# Maintainer: Zapret Linux Türkiye
+# Maintainer: WinTone01 <wintone01@users.noreply.github.com>
 pkgname=unwall
-pkgver=1.0.0
+pkgver=1.2.0
 pkgrel=1
 pkgdesc="GTK4 control panel for the zapret/nfqws DPI bypass engine"
 arch=('any')
-url="https://github.com/WinTone01/unwall"
+url="https://github.com/WinTone01/Unwall"
 license=('GPL3')
 depends=('nftables' 'python-gobject' 'libadwaita' 'gtk4' 'polkit' 'systemd' 'bind')
 makedepends=('git')
@@ -61,6 +61,8 @@ package() {
 		"$pkgdir/usr/share/applications/io.github.WinTone01.Unwall.desktop"
 	install -Dm644 share/io.github.WinTone01.Unwall.svg \
 		"$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.WinTone01.Unwall.svg"
+	install -Dm644 share/io.github.WinTone01.Unwall.metainfo.xml \
+		"$pkgdir/usr/share/metainfo/io.github.WinTone01.Unwall.metainfo.xml"
 	install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 	install -Dm644 README.tr.md "$pkgdir/usr/share/doc/$pkgname/README.tr.md"
 	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"

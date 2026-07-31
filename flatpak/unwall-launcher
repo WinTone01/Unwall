@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Unwall Flatpak başlatıcısı. Sandbox içinden çağrılır; asıl GUI koduna
+# host'a ulaşacağını (flatpak-spawn) /.flatpak-info varlığından anlatır.
+exec python3 -u /app/lib/unwall/unwall_gui.py "$@"

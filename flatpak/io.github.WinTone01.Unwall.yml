@@ -1,0 +1,54 @@
+app-id: io.github.WinTone01.Unwall
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+command: unwall
+
+# NOT: bu paket yalnızca GTK4 arayüzünü içerir. Unwall'ın gerçek işi
+# (nftables kuralları, systemd servisi, NFQUEUE) sandbox içinden
+# yapılamaz; unwallctl'in host sistemde native olarak kurulu olması
+# gerekir (bkz. ../install.sh ya da ../packaging altındaki paketler).
+# Arayüz sandbox içindeyken host'a `flatpak-spawn --host` ile ulaşır.
+#
+# Bu geniş host erişimi (--talk-name=org.freedesktop.Flatpak) yüzünden
+# bu manifest Flathub'a uygun değildir; kendi Flatpak deposunuzdan ya
+# da `flatpak-builder --install` / .flatpak paketi olarak dağıtılmak
+# üzere tasarlanmıştır.
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Host'ta unwallctl'i (ve gerektiğinde pkexec'i) çalıştırabilmek için.
+  # Bu, sandbox'ı ciddi ölçüde gevşetir; bkz. yukarıdaki not.
+  - --talk-name=org.freedesktop.Flatpak
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/pkgconfig
+  - /share/aclocal
+  - /man
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: unwall-gui
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 gui/unwall_gui.py /app/lib/unwall/unwall_gui.py
+      - install -Dm755 flatpak/unwall-launcher /app/bin/unwall
+      - install -Dm644 share/io.github.WinTone01.Unwall.desktop
+        /app/share/applications/io.github.WinTone01.Unwall.desktop
+      - install -Dm644 share/io.github.WinTone01.Unwall.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.WinTone01.Unwall.svg
+      - install -Dm644 share/io.github.WinTone01.Unwall.metainfo.xml
+        /app/share/metainfo/io.github.WinTone01.Unwall.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/WinTone01/Unwall.git
+        tag: v1.2.0
+        # Yerel geliştirme/test için tag yerine şunu kullanın:
+        #   type: dir
+        #   path: ..

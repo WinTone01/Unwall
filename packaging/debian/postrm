@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+purge)
+	rm -rf /etc/unwall /opt/unwall /var/log/unwall
+	rm -f /etc/modules-load.d/unwall.conf
+	rm -f /etc/systemd/resolved.conf.d/90-unwall.conf
+	;;
+esac
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+	update-desktop-database -q /usr/share/applications || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+	gtk-update-icon-cache -qtf /usr/share/icons/hicolor || true
+fi
+systemctl daemon-reload >/dev/null 2>&1 || true
+
+exit 0

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.WinTone01.Unwall</id>
+  <name>Unwall</name>
+  <summary>Control panel for the zapret/nfqws DPI bypass engine</summary>
+  <summary xml:lang="tr">zapret/nfqws DPI atlatma motoru için kontrol paneli</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <developer id="io.github.wintone01">
+    <name>WinTone01</name>
+  </developer>
+
+  <description>
+    <p>
+      Unwall is a Linux control panel for zapret and zapret2, the DPI (Deep
+      Packet Inspection) bypass engines by bol-van. It wraps the engine with
+      a systemd service, nftables rules, encrypted DNS, gateway mode for
+      consoles and smart TVs, and carrier presets, driven by a GTK4
+      interface that never runs as root.
+    </p>
+    <p xml:lang="tr">
+      Unwall, bol-van'ın DPI (Deep Packet Inspection) atlatma motorları
+      zapret ve zapret2 için bir Linux kontrol panelidir. Motoru bir systemd
+      servisi, nftables kuralları, şifreli DNS, konsol/TV için ağ geçidi
+      modu ve operatör presetleriyle sarar; hiçbir zaman root olarak
+      çalışmayan bir GTK4 arayüzü üzerinden yönetilir.
+    </p>
+    <p>
+      This package contains only the graphical interface. The privileged
+      backend (unwallctl, the systemd unit and the nftables rules) must be
+      installed separately on the host system — see the project README for
+      native packages (Arch, Debian/Ubuntu, Fedora/openSUSE) or the install
+      script.
+    </p>
+    <p xml:lang="tr">
+      Bu paket yalnızca grafik arayüzü içerir. Yetki gerektiren arka uç
+      (unwallctl, systemd birimi ve nftables kuralları) host sistemde ayrıca
+      kurulu olmalıdır — native paketler (Arch, Debian/Ubuntu,
+      Fedora/openSUSE) ya da kurulum betiği için projenin README dosyasına
+      bakın.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.WinTone01.Unwall.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/WinTone01/Unwall/master/docs/screenshots/gui-en-top.png</image>
+      <caption>Status, engine, strategy and encrypted DNS</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/WinTone01/Unwall/master/docs/screenshots/gui-en-bottom.png</image>
+      <caption>Encrypted DNS, gateway mode and service</caption>
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://github.com/WinTone01/Unwall</url>
+  <url type="bugtracker">https://github.com/WinTone01/Unwall/issues</url>
+  <url type="vcs-browser">https://github.com/WinTone01/Unwall</url>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.2.0" date="2026-07-31">
+      <description>
+        <p>Added .deb and .rpm packaging and a GUI-only Flatpak.</p>
+      </description>
+    </release>
+    <release version="1.1.0" date="2026-07-31">
+      <description>
+        <p>Licensed the project under GPLv3 and credited the author.</p>
+      </description>
+    </release>
+    <release version="1.0.0" date="2026-07-30">
+      <description>
+        <p>Initial release: Linux port with encrypted DNS, gateway mode and
+        an English/Turkish GTK4 interface.</p>
+      </description>
+    </release>
+  </releases>
+
+  <categories>
+    <category>Network</category>
+    <category>Security</category>
+  </categories>
+
+  <keywords>
+    <keyword>zapret</keyword>
+    <keyword>nfqws</keyword>
+    <keyword>dpi</keyword>
+    <keyword>censorship</keyword>
+    <keyword>vpn</keyword>
+  </keywords>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+</component>
