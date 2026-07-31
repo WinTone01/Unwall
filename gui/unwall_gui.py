@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.3.4"
+VERSION = "1.3.5"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -161,6 +161,11 @@ TR = {
     'A new version is available: {}': 'Yeni bir sürüm var: {}',
     'View release': 'Sürümü görüntüle',
     'Update now': 'Şimdi güncelle',
+    'Update installed': 'Güncelleme kuruldu',
+    'Restart Unwall now to use the new version?': "Yeni sürümü kullanmak için Unwall'ı şimdi yeniden başlatmak ister misiniz?",
+    'Later': 'Sonra',
+    'Restart now': 'Şimdi yeniden başlat',
+    'Could not restart automatically; please reopen Unwall yourself.': 'Otomatik yeniden başlatılamadı; lütfen Unwall\'ı elle yeniden açın.',
     'update to {}': "{}'e güncelle",
     'Check for updates': 'Güncellemeleri denetle',
     "You're up to date ({})": 'Güncelsiniz ({})',
@@ -768,8 +773,54 @@ class Window(Adw.ApplicationWindow):
             title=T("update to {}").format(self._update_latest),
             raw_argv=["bash", "-c", UPDATE_BOOTSTRAP_SCRIPT, "bash",
                       UPDATE_REPO, self._update_latest],
-            done=lambda code: self._start_update_check(force=True) if code == 0 else None,
+            done=self._on_self_update_done,
         )
+
+    def _on_self_update_done(self, code):
+        if code != 0:
+            return
+        # Dosyalar diskte güncellendi ama bu pencere hâlâ eskiden yüklenmiş
+        # Python kodunu belleğinde çalıştırıyor - Firefox/VSCode gibi, dosya
+        # değişikliği kendiliğinden devreye girmez. unwallctl her komutta
+        # yeni bir süreç olarak çalıştığı için o taraf zaten güncel; arayüz
+        # tarafının güncellenmesi için yeniden başlatma gerekir.
+        self._start_update_check(force=True)
+        heading = T("Update installed")
+        body = T("Restart Unwall now to use the new version?")
+
+        def on_resp(_d, resp):
+            if resp == "restart":
+                self._restart_app()
+
+        if hasattr(Adw, "AlertDialog"):
+            dlg = Adw.AlertDialog(heading=heading, body=body)
+            dlg.add_response("later", T("Later"))
+            dlg.add_response("restart", T("Restart now"))
+            dlg.set_response_appearance("restart", Adw.ResponseAppearance.SUGGESTED)
+            dlg.connect("response", on_resp)
+            dlg.present(self)
+        else:
+            dlg = Adw.MessageDialog(transient_for=self, heading=heading, body=body)
+            dlg.add_response("later", T("Later"))
+            dlg.add_response("restart", T("Restart now"))
+            dlg.set_response_appearance("restart", Adw.ResponseAppearance.SUGGESTED)
+            dlg.connect("response", on_resp)
+            dlg.present()
+
+    def _restart_app(self):
+        # "unwall" PATH üzerinden başlatılır - Flatpak içindeyken de bu,
+        # sandbox'ın kendi /app/bin/unwall'ına çözülür, host-spawn'a gerek
+        # yoktur (kendi sürecimizi yeniden başlatmak host işlemi değildir).
+        try:
+            subprocess.Popen(
+                ["unwall"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            log.error("could not restart: %s", exc)
+            self.toast(T("Could not restart automatically; please reopen Unwall yourself."))
+            return
+        self.get_application().quit()
 
     # -----------------------------------------------------------------
     # durum yenileme
@@ -1003,7 +1054,7 @@ class Window(Adw.ApplicationWindow):
 
         def on_resp(_d, resp):
             if resp == "run":
-                self.run_privileged(["blockcheck", engine], title=f_("blockcheck ({engine})"))
+                self.run_privileged(["blockcheck", engine], title=f"blockcheck ({engine})")
 
         # libadwaita 1.5+ AlertDialog, eski sürümlerde MessageDialog
         if hasattr(Adw, "AlertDialog"):
