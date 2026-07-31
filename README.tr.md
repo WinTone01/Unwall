@@ -177,6 +177,7 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `sudo unwallctl disable-conflicts` | çakışan DPI araçlarını kapat |
 | `unwallctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
 | `unwallctl update-check` | GitHub'da yeni sürüm var mı bak (key=value) |
+| `sudo unwallctl self-update [sürüm]` | bir sürümü indirip kur (varsayılan: en son) |
 
 Ayar dosyası: `/etc/unwall/unwall.conf`
 Listeler: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
@@ -190,6 +191,16 @@ elle tetiklenebilir:
 ```bash
 unwallctl update-check
 ```
+
+Banttaki **Şimdi güncelle** düğmesine basmak (ya da `sudo unwallctl
+self-update`'i elle çalıştırmak) o sürümün kaynak arşivini indirip
+`install.sh --no-deps --no-build`'ini çalıştırır: CLI, GUI, systemd birimi,
+polkit politikası, ikon ve menü girdisi yenilenir; paketlere ve derlenmiş
+motorlara dokunulmaz, işlem sırasında hiçbir şey başlatılmaz/durdurulmaz —
+`install.sh`'i elle çalıştırmakla aynı garantiler. Bu yalnızca `install.sh`
+ile kurduysanız işe yarar; bir dağıtım paketiyle (`.deb`/`.rpm`/AUR)
+kurduysanız güncellemeyi paket yöneticinizden yapın, çünkü `self-update`
+bir sonraki `apt`/`dnf`/`pacman` yükseltmesinde zaten üzerine yazılır.
 
 ## Şifreli DNS (YogaDNS karşılığı)
 

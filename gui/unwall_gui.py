@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.3.2"
+VERSION = "1.3.3"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -139,6 +139,8 @@ TR = {
     'Unwall': 'Unwall',
     'A new version is available: {}': 'Yeni bir sürüm var: {}',
     'View release': 'Sürümü görüntüle',
+    'Update now': 'Şimdi güncelle',
+    'update to {}': "{}'e güncelle",
     'Check for updates': 'Güncellemeleri denetle',
     "You're up to date ({})": 'Güncelsiniz ({})',
     'Could not check for updates (offline?)': "Güncelleme kontrolü yapılamadı (çevrimdışı olabilir)",
@@ -347,10 +349,11 @@ class Window(Adw.ApplicationWindow):
         # ikisi aynı anda görünebilir)
         self.update_banner = Adw.Banner(
             title="",
-            button_label=T("View release"),
+            button_label=T("Update now"),
             revealed=False,
         )
         self._update_url = ""
+        self._update_latest = ""
         self.update_banner.connect("button-clicked", self._on_update_banner_clicked)
         toolbar.add_top_bar(self.update_banner)
 
@@ -630,14 +633,34 @@ class Window(Adw.ApplicationWindow):
     # GitHub sürüm kontrolü
     # -----------------------------------------------------------------
 
+    def _installed_ctl_version(self):
+        """unwallctl'in şu an raporladığı sürüm. Ağa çıkmaz, hızlıdır."""
+        try:
+            p = subprocess.run(
+                [*HOST_PREFIX, CTL, "version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return p.stdout.strip() or None
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
     def _start_update_check(self, force=False, notify=False):
         """Günde bir kez ağa çıkar; aradaki başlatmalarda önbelleği kullanır."""
         if not force:
             cached = self._load_update_cache()
             if cached and (time.time() - cached.get("checked_at", 0)) < UPDATE_CHECK_INTERVAL:
-                log.debug("update check: using cached result from %s", cached.get("checked_at"))
-                self._apply_update_result(cached)
-                return False
+                installed = self._installed_ctl_version()
+                # Kurulu unwallctl önbellekteki "current" ile uyuşmuyorsa
+                # (self-update ya da elle install.sh ile güncellendi),
+                # önbellek bayatlamış demektir - süresi dolmasa da atla.
+                if installed is None or installed == cached.get("current"):
+                    log.debug("update check: using cached result from %s", cached.get("checked_at"))
+                    self._apply_update_result(cached)
+                    return False
+                log.debug(
+                    "installed unwallctl changed (%s -> %s), cache invalidated",
+                    cached.get("current"), installed,
+                )
 
         try:
             proc = Gio.Subprocess.new(
@@ -696,6 +719,7 @@ class Window(Adw.ApplicationWindow):
         self._update_url = info.get(
             "url", "https://github.com/WinTone01/Unwall/releases/latest"
         )
+        self._update_latest = info["latest"]
         self.update_banner.set_title(
             T("A new version is available: {}").format(info["latest"])
         )
@@ -703,9 +727,16 @@ class Window(Adw.ApplicationWindow):
         log.info("update available: %s -> %s", info.get("current"), info["latest"])
 
     def _on_update_banner_clicked(self, *_):
-        if self._update_url:
-            Gio.AppInfo.launch_default_for_uri(self._update_url, None)
+        if not self._update_latest:
+            if self._update_url:
+                Gio.AppInfo.launch_default_for_uri(self._update_url, None)
+            return
         self.update_banner.set_revealed(False)
+        self.run_privileged(
+            ["self-update", self._update_latest],
+            title=T("update to {}").format(self._update_latest),
+            done=lambda code: self._start_update_check(force=True) if code == 0 else None,
+        )
 
     # -----------------------------------------------------------------
     # durum yenileme

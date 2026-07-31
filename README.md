@@ -178,6 +178,7 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `sudo unwallctl disable-conflicts` | shut down conflicting DPI tools |
 | `unwallctl print-cmd`, `print-nft` | show the generated command and rules |
 | `unwallctl update-check` | check GitHub for a newer release (key=value) |
+| `sudo unwallctl self-update [version]` | download and install a release (defaults to latest) |
 
 Configuration: `/etc/unwall/unwall.conf`
 Lists: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
@@ -191,6 +192,16 @@ link to the release when one is found. Force a check from the menu
 ```bash
 unwallctl update-check
 ```
+
+Clicking **Update now** on the banner (or running `sudo unwallctl self-update`
+yourself) downloads that release's source tarball and runs its `install.sh
+--no-deps --no-build`: the CLI, GUI, systemd unit, polkit policy, icon and
+menu entry are refreshed; packages and the compiled engines are left alone,
+and nothing is started or stopped in the process — same guarantees as running
+`install.sh` by hand. This only applies if you installed with `install.sh` in
+the first place; if you used a distro package (`.deb`/`.rpm`/AUR), update
+through your package manager instead, since `self-update` would just get
+overwritten by the next `apt`/`dnf`/`pacman` upgrade anyway.
 
 ## Encrypted DNS (the YogaDNS equivalent)
 
