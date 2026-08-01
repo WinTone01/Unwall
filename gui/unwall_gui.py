@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.3.9"
+VERSION = "1.3.10"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -1129,13 +1129,28 @@ class Window(Adw.ApplicationWindow):
                 "(zapret-win-bundle + AutoIt)."
             ),
             website="https://github.com/WinTone01/unwall",
+            issue_url="https://github.com/WinTone01/Unwall/issues",
             license_type=Gtk.License.GPL_3_0,
-            developers=["Unwall contributors"],
+            developer_name="WinTone01",
+            developers=["WinTone01 https://github.com/WinTone01"],
+        )
+        credit_section = (
+            T("Based on / inspired by"),
+            [
+                "alimali54 (zapret-win-turkey) https://github.com/alimali54",
+                "bol-van (zapret, zapret2) https://github.com/bol-van",
+                "cagritaskn (splitwire-turkey) https://github.com/cagritaskn",
+                "DaniilSokolyuk (go-pcap2socks) https://github.com/DaniilSokolyuk",
+            ],
         )
         if hasattr(Adw, "AboutDialog"):
-            Adw.AboutDialog(**kwargs).present(self)
+            dialog = Adw.AboutDialog(**kwargs)
+            dialog.add_credit_section(*credit_section)
+            dialog.present(self)
         else:
-            Adw.AboutWindow(transient_for=self, **kwargs).present()
+            window = Adw.AboutWindow(transient_for=self, **kwargs)
+            window.add_credit_section(*credit_section)
+            window.present()
 
 
 class App(Adw.Application):
