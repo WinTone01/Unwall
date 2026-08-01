@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.8"
+VERSION="1.3.9"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -1290,25 +1290,36 @@ cmd_self_update() {
 		return 0
 	fi
 
+	# NOT: "local tmp; trap ... RETURN" kasıtlı olarak kullanılmıyor. Bu
+	# fonksiyon dönerken RETURN trap'i tetiklendiğinde bash, $tmp'nin ait
+	# olduğu yerel değişken kapsamını çoktan kapatmış oluyor; "set -u"
+	# altında bu, başarılı bir self-update'in sonunda anlamsız bir
+	# "tmp: unbound variable" hatasıyla patlamasına yol açıyordu (dosyalar
+	# zaten doğru kopyalanmış olsa bile). Temizliği açıkça, dönmeden hemen
+	# önce yapıyoruz.
 	local tmp; tmp="$(mktemp -d)"
-	trap 'rm -rf "$tmp"' RETURN
 
 	local tarball="https://github.com/$UPDATE_REPO/archive/refs/tags/v$target.tar.gz"
 	info "v$target indiriliyor: $tarball"
 	curl -fsSL "$tarball" -o "$tmp/unwall.tar.gz" ||
-		die "indirilemedi (v$target etiketi gerçekten var mı?)"
+		{ rm -rf "$tmp"; die "indirilemedi (v$target etiketi gerçekten var mı?)"; }
 
-	tar -xzf "$tmp/unwall.tar.gz" -C "$tmp" || die "arşiv açılamadı"
+	tar -xzf "$tmp/unwall.tar.gz" -C "$tmp" || { rm -rf "$tmp"; die "arşiv açılamadı"; }
 
 	local srcdir
 	srcdir="$(find "$tmp" -maxdepth 1 -mindepth 1 -type d | head -1)"
-	[ -n "$srcdir" ] && [ -x "$srcdir/install.sh" ] ||
+	if [ -z "$srcdir" ] || [ ! -x "$srcdir/install.sh" ]; then
+		rm -rf "$tmp"
 		die "indirilen arşivde install.sh bulunamadı"
+	fi
 
 	info "v$target kuruluyor (paketler ve motorlar değiştirilmez)"
-	( cd "$srcdir" && ./install.sh --yes --no-deps --no-build ) ||
+	if ! ( cd "$srcdir" && ./install.sh --yes --no-deps --no-build ); then
+		rm -rf "$tmp"
 		die "kurulum başarısız oldu"
+	fi
 
+	rm -rf "$tmp"
 	info "v$target kuruldu"
 }
 
