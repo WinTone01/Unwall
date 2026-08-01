@@ -5,55 +5,70 @@
 <h1 align="center">Unwall</h1>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="Lisans: GPLv3"></a>
+  <code>zapret</code> / <code>zapret2</code> DPI atlatma motorları için Linux kontrol paneli —
+  systemd servisi, nftables kuralları, şifreli DNS, ağ geçidi modu ve hiçbir zaman
+  root olarak çalışmayan bir GTK4 arayüz.
 </p>
-
-**Türkçe** · [English](README.md)
-
-@bol-van'ın DPI (Deep Packet Inspection) atlatma motorları
-[zapret](https://github.com/bol-van/zapret) ve
-[zapret2](https://github.com/bol-van/zapret2) için Linux kontrol paneli.
-Unwall bu motorları masaüstünde gerçekten kullanılabilir hale getirir: systemd
-servisi, nftables kuralları, şifreli DNS, konsollar için ağ geçidi modu ve hiçbir
-zaman root olarak çalışmayan bir GTK4 arayüzü.
 
 <p align="center">
-  <img src="docs/screenshots/gui-tr-top.png" alt="Unwall - durum, motor, strateji ve şifreli DNS" width="46%">
-  <img src="docs/screenshots/gui-tr-bottom.png" alt="Unwall - şifreli DNS, ağ geçidi modu ve servis" width="46%">
+  <a href="https://github.com/WinTone01/Unwall/releases/latest"><img src="https://img.shields.io/github/v/release/WinTone01/Unwall?label=s%C3%BCr%C3%BCm" alt="Son sürüm"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/lisans-GPLv3-blue.svg" alt="Lisans: GPLv3"></a>
+  <a href="https://github.com/WinTone01/Unwall/actions/workflows/ci.yml"><img src="https://github.com/WinTone01/Unwall/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/platform-Linux-informational" alt="Platform: Linux">
 </p>
 
-Linux'ta motor yerli çalışır: WinDivert benzeri bir sürücü yerine çekirdeğin
-**netfilter/NFQUEUE** altyapısı paketleri yakalar, işi `nfqws` yapar. Unwall bu
-motorun etrafına operatör presetleri, hostlist yönetimi, şifreli DNS ve teşhis
-araçları ekler.
+<p align="center">
+  <b>Türkçe</b> · <a href="README.md">English</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/gui-tr.png" alt="Unwall — durum, motor/strateji, filtreleme, şifreli DNS, ağ geçidi modu ve servis" width="360">
+</p>
+
+---
+
+Unwall, [@bol-van](https://github.com/bol-van)'ın DPI (Deep Packet Inspection)
+atlatma motorları [zapret](https://github.com/bol-van/zapret) ve
+[zapret2](https://github.com/bol-van/zapret2)'yi masaüstünde gerçekten
+kullanılabilir hale getirir. Linux'ta motor yerli çalışır: WinDivert benzeri
+bir sürücü yerine çekirdeğin **netfilter/NFQUEUE** altyapısı paketleri
+yakalar, işi `nfqws` yapar. Unwall bu motorun etrafına operatör presetleri,
+hostlist yönetimi, şifreli DNS ve teşhis araçları ekler.
 
 Şu an hazır operatör presetleri **Türkiye** içindir (proje
 [zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey)
 uygulamasından doğdu); başka bir ülke eklemek
 [`lib/strategies.conf`](lib/strategies.conf) dosyasına tek satır eklemekten
-ibarettir.
+ibarettir — bkz. [CONTRIBUTING.md](CONTRIBUTING.md) (İngilizce).
+
+## İçindekiler
+
+- [Özellikler](#özellikler)
+- [Kurulum](#kurulum)
+- [Kullanım](#kullanım)
+- [Şifreli DNS](#şifreli-dns-yogadns-karşılığı)
+- [Ağdaki cihazlarla paylaşım](#ağdaki-cihazlarla-paylaş-konsol-tv)
+- [Windows sürümünden farklar](#windows-sürümünden-farklar)
+- [Proje yapısı](#proje-yapısı)
+- [Sorun giderme](#sorun-giderme)
+- [Katkıda bulunma](#katkıda-bulunma)
+- [Lisans](#lisans)
+- [Teşekkürler](#teşekkürler)
 
 ## Özellikler
 
-- **Çoklu motor**: klasik `nfqws` (zapret) ve yeni LUA tabanlı `nfqws2` (zapret2).
-- **Hazır stratejiler**: operatör presetleri (şimdilik `TR ·` Türk Telekom,
-  Superonline, Kablonet, Vodafone, Turkcell/Telekom mobil) ve operatörden
-  bağımsız genel profiller — blockcheck beklemeden denenebilir.
-- **Blockcheck**: operatörünüz için çalışan stratejiyi otomatik arar, sonucu
-  doğrudan yapılandırmaya yazar.
-- **Hostlist / excludelist**: yalnızca engellenen alan adları motordan geçer;
-  normal trafiğiniz etkilenmez. `com.tr` ve `gov.tr` varsayılan olarak hariç.
-- **systemd servisi**: açılışta otomatik başlatma, arayüz açık olmasa da çalışır.
-- **Ağ geçidi modu**: konsol, akıllı TV gibi cihazların trafiğini bu makine
-  üzerinden geçirir (Windows'taki `go-pcap2socks` + Npcap katmanının karşılığı).
-- **Şifreli DNS**: tek anahtarla DoH (`dnscrypt-proxy`, 443) veya DoT
-  (`systemd-resolved`, 853) kurulumu — Windows sürümündeki YogaDNS önerisinin
-  yerine geçer, geri alınabilir.
-- **Teşhis**: DNS müdahalesi kontrolü, çakışan araç/kuyruk tespiti.
-- **Türkçe ve İngilizce**: arayüz dili yerel ayardan seçilir, menüden
-  (Dil) değiştirilebilir; `UW_LANG=tr` / `UW_LANG=en` ile de zorlanabilir.
-- **Yetki ayrımı**: arayüz normal kullanıcı olarak çalışır, ayrıcalıklı işler
-  polkit üzerinden tek bir yardımcı betiğe gider.
+| | |
+|---|---|
+| **Çoklu motor** | klasik `nfqws` (zapret) ve yeni LUA tabanlı `nfqws2` (zapret2) |
+| **Hazır stratejiler** | operatör presetleri (şimdilik `TR ·` Türk Telekom, Superonline, Kablonet, Vodafone, Turkcell/Telekom mobil) ve operatörden bağımsız genel profiller — blockcheck beklemeden denenebilir |
+| **Blockcheck** | operatörünüz için çalışan stratejiyi otomatik arar, sonucu doğrudan yapılandırmaya yazar |
+| **Hostlist / excludelist** | yalnızca engellenen alan adları motordan geçer, normal trafiğiniz etkilenmez; `com.tr` ve `gov.tr` varsayılan olarak hariç |
+| **systemd servisi** | açılışta otomatik başlatma, arayüz kapalıyken de çalışır |
+| **Ağ geçidi modu** | konsol, akıllı TV gibi cihazların trafiğini bu makine üzerinden geçirir (Windows'taki `go-pcap2socks` + Npcap'in karşılığı) |
+| **Şifreli DNS** | tek anahtarla DoH (`dnscrypt-proxy`, 443) veya DoT (`systemd-resolved`, 853) — YogaDNS önerisinin yerine geçer, geri alınabilir |
+| **Teşhis** | DNS müdahalesi kontrolü, çakışan araç/kuyruk tespiti |
+| **Türkçe ve İngilizce** | arayüz dili yerel ayardan seçilir, menüden değiştirilebilir (`UW_LANG=tr`/`en` ile de zorlanır) |
+| **Yetki ayrımı** | arayüz normal kullanıcı olarak çalışır, ayrıcalıklı işler polkit üzerinden tek bir yardımcı betiğe gider |
 
 ## Kurulum
 
@@ -109,23 +124,30 @@ yukarıdaki paketlerden biri (ya da `install.sh`) zaten kurulu olmalı.
   çalıştığı makinede native motoru bekleyen, taşınabilir tek dosyalık bir
   arayüzdür.
 
+<details>
+<summary><b>Yükseltme / kaldırma</b></summary>
+<br>
+
 **`zapret-turkey`'den yükseltme** (projenin eski adı): `./install.sh` yeterli.
 Eski servisi kapatır, `/etc/zapret-turkey` ve `/opt/zapret-turkey` dizinlerini
 yeni yollara taşır (motorlar yeniden derlenmez), şifreli DNS ayarınızı korur,
 eski ikilileri, birimi, polkit politikasını ve menü girdisini siler.
 
 Her şeyi kaldırmak için: `./uninstall.sh` (parolayı o da yalnızca bir kez
-sorar). Servisi durdurup devre dışı
-bırakır, nftables kurallarını siler, şifreli DNS yapılandırmasını geri alır
-(değiştirdiği `dnscrypt-proxy.toml` varsa yedekten geri yükler), program
-dosyalarını, ayarları ve listeleri, derlenmiş motorları ve kaynak ağacını,
-günlükleri siler; sonunda geriye iz kalmadığını doğrular. `--yes` onay sormaz,
-`--keep-config` `/etc/unwall` dizinini korur, `--purge-deps`
-`dnscrypt-proxy` paketini de kaldırır. Diğer bağımlılıklar (nftables, gtk4,
-luajit …) başka yazılımlar kullanabileceği için sistemde bırakılır.
+sorar). Servisi durdurup devre dışı bırakır, nftables kurallarını siler,
+şifreli DNS yapılandırmasını geri alır (değiştirdiği `dnscrypt-proxy.toml`
+varsa yedekten geri yükler), program dosyalarını, ayarları ve listeleri,
+derlenmiş motorları ve kaynak ağacını, günlükleri siler; sonunda geriye iz
+kalmadığını doğrular. `--yes` onay sormaz, `--keep-config` `/etc/unwall`
+dizinini korur, `--purge-deps` `dnscrypt-proxy` paketini de kaldırır. Diğer
+bağımlılıklar (nftables, gtk4, luajit …) başka yazılımlar kullanabileceği
+için sistemde bırakılır.
+
+</details>
 
 <details>
-<summary>Bağımlılıkları elle kurmak isterseniz</summary>
+<summary><b>Bağımlılıkları elle kurmak isterseniz</b></summary>
+<br>
 
 ```bash
 sudo pacman -S --needed nftables python-gobject libadwaita gtk4 polkit bind gcc make pkgconf git curl luajit libnetfilter_queue libnfnetlink libmnl zlib dnscrypt-proxy
@@ -139,11 +161,11 @@ sudo apt install nftables python3-gi gir1.2-adw-1 gir1.2-gtk-4.0 policykit-1 dns
 sudo dnf install nftables python3-gobject libadwaita gtk4 polkit bind-utils gcc make pkgconf git curl luajit-devel libnetfilter_queue-devel libnfnetlink-devel libmnl-devel zlib-devel dnscrypt-proxy
 ```
 
-</details>
-
 `build` komutu `bol-van/zapret` ve `bol-van/zapret2` depolarını
 `/opt/unwall/src` altına klonlayıp `nfqws` / `nfqws2` ikililerini derler;
 sonradan `sudo unwallctl build` ile motorları güncelleyebilirsiniz.
+
+</details>
 
 ## Kullanım
 
@@ -179,9 +201,9 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `unwallctl update-check` | GitHub'da yeni sürüm var mı bak (key=value) |
 | `sudo unwallctl self-update [sürüm]` | bir sürümü indirip kur (varsayılan: en son) |
 
-Ayar dosyası: `/etc/unwall/unwall.conf`
-Listeler: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
-Günlükler: `journalctl -u unwall -f` ve `/var/log/unwall/`
+**Ayar dosyası**: `/etc/unwall/unwall.conf`
+**Listeler**: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
+**Günlükler**: `journalctl -u unwall -f` ve `/var/log/unwall/`
 
 Arayüz günde bir kez arka planda GitHub'da yeni sürüm olup olmadığına bakar
 (aksi halde hiç ağa çıkmaz) ve bulursa kapatılabilir bir bant içinde sürüm
@@ -208,8 +230,6 @@ ISS'niz DNS'e müdahale ediyorsa zapret tek başına yetmez. Arayüzdeki **Şifr
 DNS** anahtarı ya da `unwallctl dns` komutu bunu kurar; elle dosya
 düzenlemenize gerek yoktur.
 
-İki yöntem var:
-
 | Yöntem | Taşıma | Not |
 |---|---|---|
 | **DoH** — `dnscrypt-proxy` | 443/tcp | Normal HTTPS'ten ayırt edilemez, engellenmesi zor. `dnscrypt-proxy` paketi gerekir. |
@@ -227,7 +247,9 @@ unwallctl dns test
 sudo unwallctl dns disable
 ```
 
-Ne yapıldığı:
+<details>
+<summary>Perde arkasında ne oluyor</summary>
+<br>
 
 - **DoT**: `/etc/systemd/resolved.conf.d/90-unwall.conf` içine
   `DNSOverTLS=yes` + sağlayıcı sunucuları yazılır. `Domains=~.` sayesinde
@@ -240,7 +262,7 @@ Ne yapıldığı:
 
 `dns disable` her iki değişikliği de geri alır — kaldırma betiği de bunu çağırır.
 
-DoH için paket: `sudo pacman -S dnscrypt-proxy`
+</details>
 
 ## Ağdaki Cihazlarla Paylaş (konsol, TV)
 
@@ -259,15 +281,16 @@ makineye yeniden yazılır.
 
 Cihazın (PlayStation, Xbox, Switch, TV) manuel ağ ayarlarına:
 
-- **IP adresi**: ağınızda boş bir adres (örn. `192.168.1.50`)
-- **Alt ağ maskesi**: ağınızla aynı (genelde `255.255.255.0`)
-- **Ağ geçidi**: bu bilgisayarın LAN IP adresi (arayüzde "LAN adresi" satırında yazar)
-- **DNS**: geçerli görünen herhangi bir değer olur (örn. `1.1.1.1`) — çoğu
-  cihaz DNS alanı boşken devam etmiyor, ama gerçek değer yukarıdaki
-  yönlendirmeyle zaten geçersiz kılınıyor
+| Alan | Değer |
+|---|---|
+| IP adresi | ağınızda boş bir adres, örn. `192.168.1.50` |
+| Alt ağ maskesi | ağınızla aynı, genelde `255.255.255.0` |
+| Ağ geçidi | bu bilgisayarın LAN IP adresi (arayüzde "LAN adresi" satırında yazar) |
+| DNS | geçerli görünen herhangi bir değer, örn. `1.1.1.1` — çoğu cihaz DNS alanı boşken devam etmiyor, ama gerçek değer yukarıdaki yönlendirmeyle zaten geçersiz kılınıyor |
 
-Not: `firewalld`/`ufw` gibi bir güvenlik duvarı `forward` zincirinde varsayılan
-olarak paket düşürüyorsa yönlendirmeye izin vermeniz gerekir.
+> [!NOTE]
+> `firewalld`/`ufw` gibi bir güvenlik duvarı `forward` zincirinde varsayılan
+> olarak paket düşürüyorsa yönlendirmeye izin vermeniz gerekir.
 
 ## Windows sürümünden farklar
 
@@ -326,6 +349,10 @@ ayıklarken ayrı bir örnek isterseniz:
 UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
 ```
 
+<details open>
+<summary><b>Sık karşılaşılan sorunlar</b></summary>
+<br>
+
 - **Motor başlamıyor**: `journalctl -u unwall -n 50`
 - **Seçtiğim strateji geri dönüyor**: seçim "AYARLARI UYGULA" / "ZAPRET'İ
   BAŞLAT" düğmesine basılana kadar yalnızca beklemededir; durum satırında
@@ -360,6 +387,20 @@ UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
   (upstream `200` kullanır). Ayrıca `build` adımını atlayıp mevcut
   `/opt/zapret` ve `/opt/zapret2` ikilileri doğrudan kullanılabilir; motor
   bulunamazsa oralara da bakılır.
+
+</details>
+
+Hâlâ takıldıysanız [hata bildirimi şablonunu](https://github.com/WinTone01/Unwall/issues/new/choose)
+kullanarak bir issue açın — istediği ortam tablosunu (sürüm, kurulum yöntemi,
+dağıtım, motor, strateji, hostlist modu) önceden doldurmak en büyük zaman
+kazancı.
+
+## Katkıda bulunma
+
+Hata bildirimleri, başka ülkeler için strateji presetleri ve pull request'ler
+memnuniyetle karşılanır — projenin nasıl düzenlendiği, her push'ta CI'ın neyi
+kontrol ettiği ve bir PR açmadan önce yerelde neyi doğrulamanız gerektiği için
+[CONTRIBUTING.md](CONTRIBUTING.md) dosyasına (İngilizce) bakın.
 
 ## Lisans
 

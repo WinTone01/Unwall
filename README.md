@@ -5,55 +5,70 @@
 <h1 align="center">Unwall</h1>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="License: GPLv3"></a>
+  A Linux control panel for the <code>zapret</code> / <code>zapret2</code> DPI-bypass engines —
+  systemd service, nftables rules, encrypted DNS, gateway mode and a GTK4 interface
+  that never runs as root.
 </p>
-
-**English** · [Türkçe](README.tr.md)
-
-A Linux control panel for [zapret](https://github.com/bol-van/zapret) and
-[zapret2](https://github.com/bol-van/zapret2) — the DPI (Deep Packet Inspection)
-bypass engines by @bol-van. Unwall turns them into something you can actually
-run on a desktop: a systemd service, nftables rules, encrypted DNS, gateway mode
-for your consoles, and a GTK4 interface that never runs as root.
 
 <p align="center">
-  <img src="docs/screenshots/gui-en-top.png" alt="Unwall - status, engine, strategy and encrypted DNS" width="46%">
-  <img src="docs/screenshots/gui-en-bottom.png" alt="Unwall - encrypted DNS, gateway mode and service" width="46%">
+  <a href="https://github.com/WinTone01/Unwall/releases/latest"><img src="https://img.shields.io/github/v/release/WinTone01/Unwall?label=release" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="License: GPLv3"></a>
+  <a href="https://github.com/WinTone01/Unwall/actions/workflows/ci.yml"><img src="https://github.com/WinTone01/Unwall/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/platform-Linux-informational" alt="Platform: Linux">
 </p>
 
-On Linux the engine is native: instead of a WinDivert-style driver the kernel's
-**netfilter/NFQUEUE** subsystem does the interception and `nfqws` does the work.
-Unwall wraps that engine with carrier presets, hostlist management, encrypted
-DNS and diagnostics.
+<p align="center">
+  <b>English</b> · <a href="README.tr.md">Türkçe</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/gui-en.png" alt="Unwall — status, engine/strategy, filtering, encrypted DNS, gateway mode and service" width="360">
+</p>
+
+---
+
+Unwall wraps [zapret](https://github.com/bol-van/zapret) and
+[zapret2](https://github.com/bol-van/zapret2) — the DPI (Deep Packet Inspection)
+bypass engines by [@bol-van](https://github.com/bol-van) — into something you can
+actually run on a desktop. On Linux the engine is native: instead of a
+WinDivert-style driver, the kernel's **netfilter/NFQUEUE** subsystem does the
+interception and `nfqws` does the work. Unwall adds carrier presets, hostlist
+management, encrypted DNS and diagnostics on top.
 
 Carrier presets currently ship for **Turkey** (the project grew out of
-[zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey)); adding
-your own country is a one-line change in
-[`lib/strategies.conf`](lib/strategies.conf) and pull requests are welcome.
+[zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey)); adding your
+own country is a one-line change in
+[`lib/strategies.conf`](lib/strategies.conf) — see
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Encrypted DNS](#encrypted-dns-the-yogadns-equivalent)
+- [Sharing with other devices](#sharing-with-devices-on-your-network-console-tv)
+- [Differences from the Windows version](#differences-from-the-windows-version)
+- [Project layout](#project-layout)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+- [Credits](#credits)
 
 ## Features
 
-- **Two engines**: the classic `nfqws` (zapret) and the new LUA-based `nfqws2`
-  (zapret2).
-- **Ready-made strategies**: carrier presets (currently `TR ·` Türk Telekom,
-  Superonline, Kablonet, Vodafone, Turkcell/Telekom mobile) plus
-  carrier-independent generic profiles — usable without running blockcheck.
-- **Blockcheck**: searches for a strategy that works on your ISP and writes the
-  result straight into the configuration.
-- **Hostlist / excludelist**: only blocked domains go through the engine, so the
-  rest of your traffic is untouched. `com.tr` and `gov.tr` are excluded by
-  default.
-- **systemd service**: starts at boot and keeps running with the GUI closed.
-- **Gateway mode**: routes devices on your LAN (console, smart TV) through this
-  machine — the replacement for `go-pcap2socks` + Npcap on Windows.
-- **Encrypted DNS**: one switch sets up DoH (`dnscrypt-proxy`, port 443) or DoT
-  (`systemd-resolved`, port 853). This replaces the YogaDNS recommendation from
-  the Windows version, and it is fully reversible.
-- **Diagnostics**: DNS interference check, conflicting tool and queue detection.
-- **English and Turkish**: the interface picks your locale automatically and can
-  be switched from the menu (Language); `UW_LANG=en` / `UW_LANG=tr` override it.
-- **Privilege separation**: the GUI runs as your normal user; privileged work
-  goes through a single helper script via polkit.
+| | |
+|---|---|
+| **Two engines** | the classic `nfqws` (zapret) and the new LUA-based `nfqws2` (zapret2) |
+| **Ready-made strategies** | carrier presets (currently `TR ·` Türk Telekom, Superonline, Kablonet, Vodafone, Turkcell/Telekom mobile) plus carrier-independent generic profiles — usable without running blockcheck |
+| **Blockcheck** | searches for a strategy that works on your ISP and writes the result straight into the configuration |
+| **Hostlist / excludelist** | only blocked domains go through the engine, the rest of your traffic is untouched; `com.tr` and `gov.tr` are excluded by default |
+| **systemd service** | starts at boot and keeps running with the GUI closed |
+| **Gateway mode** | routes devices on your LAN (console, smart TV) through this machine — the replacement for `go-pcap2socks` + Npcap on Windows |
+| **Encrypted DNS** | one switch sets up DoH (`dnscrypt-proxy`, port 443) or DoT (`systemd-resolved`, port 853) — replaces the YogaDNS recommendation from the Windows version, fully reversible |
+| **Diagnostics** | DNS interference check, conflicting-tool and queue detection |
+| **English and Turkish** | picks your locale automatically, switchable from the menu (`UW_LANG=en`/`tr` overrides it) |
+| **Privilege separation** | the GUI runs as your normal user; privileged work goes through a single helper script via polkit |
 
 ## Installation
 
@@ -109,6 +124,10 @@ one of the packages above (or `install.sh`) installed on the host first.
   portable file that still expects the native backend on the machine it runs
   on, same as the Flatpak.
 
+<details>
+<summary><b>Upgrading / uninstalling</b></summary>
+<br>
+
 **Upgrading from `zapret-turkey`** (the previous name of this project): just run
 `./install.sh`. It disables the old service, moves `/etc/zapret-turkey` and
 `/opt/zapret-turkey` to the new paths (so the engines are not rebuilt), keeps
@@ -116,17 +135,20 @@ your encrypted DNS setup, and removes the old binaries, unit, polkit policy and
 menu entry.
 
 To remove everything: `./uninstall.sh` (it also asks for the password only
-once). It stops and disables the service,
-drops the nftables rules, reverts the encrypted DNS configuration (restoring any
-`dnscrypt-proxy.toml` it replaced), deletes the program files, the settings and
-lists, the compiled engines and source tree, and the logs — then verifies that
-nothing is left behind. Use `--yes` to skip the confirmation, `--keep-config` to
-preserve `/etc/unwall`, and `--purge-deps` to remove the `dnscrypt-proxy`
-package as well. Other dependencies (nftables, gtk4, luajit …) are left alone
-because other software may need them.
+once). It stops and disables the service, drops the nftables rules, reverts
+the encrypted DNS configuration (restoring any `dnscrypt-proxy.toml` it
+replaced), deletes the program files, the settings and lists, the compiled
+engines and source tree, and the logs — then verifies that nothing is left
+behind. Use `--yes` to skip the confirmation, `--keep-config` to preserve
+`/etc/unwall`, and `--purge-deps` to remove the `dnscrypt-proxy` package as
+well. Other dependencies (nftables, gtk4, luajit …) are left alone because
+other software may need them.
+
+</details>
 
 <details>
-<summary>Installing dependencies manually</summary>
+<summary><b>Installing dependencies manually</b></summary>
+<br>
 
 ```bash
 sudo pacman -S --needed nftables python-gobject libadwaita gtk4 polkit bind gcc make pkgconf git curl luajit libnetfilter_queue libnfnetlink libmnl zlib dnscrypt-proxy
@@ -140,22 +162,22 @@ sudo apt install nftables python3-gi gir1.2-adw-1 gir1.2-gtk-4.0 policykit-1 dns
 sudo dnf install nftables python3-gobject libadwaita gtk4 polkit bind-utils gcc make pkgconf git curl luajit-devel libnetfilter_queue-devel libnfnetlink-devel libmnl-devel zlib-devel dnscrypt-proxy
 ```
 
-</details>
+`build` clones `bol-van/zapret` and `bol-van/zapret2` into `/opt/unwall/src`
+and compiles the `nfqws` / `nfqws2` binaries. Run `sudo unwallctl build`
+later to update the engines.
 
-`build` clones `bol-van/zapret` and `bol-van/zapret2` into
-`/opt/unwall/src` and compiles the `nfqws` / `nfqws2` binaries. Run
-`sudo unwallctl build` later to update the engines.
+</details>
 
 ## Usage
 
 Pick an engine, a strategy and a hostlist mode in the GUI, then press
-**ZAPRET'İ BAŞLAT** (start). Your choices are not applied until you press that
-button; until then the status line shows `uygulanmadı → ...` (not applied) and
-the button reads **AYARLARI UYGULA** (apply settings). The "start at boot"
-switch enables the systemd unit, which keeps running with the GUI closed.
+**START**. Your choices are not applied until you press that button; until
+then the status line shows `not applied → ...` and the button reads **APPLY
+SETTINGS**. The "start at boot" switch enables the systemd unit, which keeps
+running with the GUI closed.
 
-The GUI runs as your normal user; only privileged actions (starting the engine,
-the service, DNS, firewall rules) ask for a password through polkit.
+The GUI runs as your normal user; only privileged actions (starting the
+engine, the service, DNS, firewall rules) ask for a password through polkit.
 
 From the terminal:
 
@@ -180,9 +202,9 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `unwallctl update-check` | check GitHub for a newer release (key=value) |
 | `sudo unwallctl self-update [version]` | download and install a release (defaults to latest) |
 
-Configuration: `/etc/unwall/unwall.conf`
-Lists: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
-Logs: `journalctl -u unwall -f` and `/var/log/unwall/`
+**Configuration**: `/etc/unwall/unwall.conf`
+**Lists**: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
+**Logs**: `journalctl -u unwall -f` and `/var/log/unwall/`
 
 The GUI checks GitHub for a newer release once a day in the background (no
 network access is required otherwise) and shows a dismissible banner with a
@@ -205,9 +227,9 @@ overwritten by the next `apt`/`dnf`/`pacman` upgrade anyway.
 
 ## Encrypted DNS (the YogaDNS equivalent)
 
-If your ISP tampers with DNS, zapret alone is not enough. The **Şifreli DNS**
-(encrypted DNS) switch in the GUI, or the `unwallctl dns` command, sets
-this up for you — no manual file editing.
+If your ISP tampers with DNS, zapret alone is not enough. The **Encrypted
+DNS** switch in the GUI, or the `unwallctl dns` command, sets this up for
+you — no manual file editing.
 
 | Method | Transport | Notes |
 |---|---|---|
@@ -226,7 +248,9 @@ unwallctl dns test
 sudo unwallctl dns disable
 ```
 
-What happens under the hood:
+<details>
+<summary>What happens under the hood</summary>
+<br>
 
 - **DoT**: a drop-in at `/etc/systemd/resolved.conf.d/90-unwall.conf`
   with `DNSOverTLS=yes` and the provider's servers. `Domains=~.` makes these
@@ -239,12 +263,14 @@ What happens under the hood:
 
 `dns disable` reverts both changes — the uninstall script calls it too.
 
+</details>
+
 ## Sharing with devices on your network (console, TV)
 
-Turn on the **Ağ geçidi modu** (gateway mode) switch. This machine becomes a
-NAT router for the local network (`ip_forward` + `nft masquerade`) and the
-forwarded traffic goes through zapret as well. The Npcap + `go-pcap2socks`
-layer used on Windows is not needed; routing is done by the kernel.
+Turn on the **Gateway mode** switch. This machine becomes a NAT router for
+the local network (`ip_forward` + `nft masquerade`) and the forwarded
+traffic goes through zapret as well. The Npcap + `go-pcap2socks` layer used
+on Windows is not needed; routing is done by the kernel.
 
 DNS is handled the same way `go-pcap2socks` handled it on Windows, just with
 a kernel rule instead of a bundled proxy: an nftables rule transparently
@@ -257,15 +283,16 @@ that address, they get rewritten to this machine before they do.
 
 In the manual network settings of the device (PlayStation, Xbox, Switch, TV):
 
-- **IP address**: a free address on your network (e.g. `192.168.1.50`)
-- **Subnet mask**: same as your network (usually `255.255.255.0`)
-- **Gateway**: this computer's LAN IP (shown in the "LAN adresi" row of the GUI)
-- **DNS**: any valid-looking value works (e.g. `1.1.1.1`) — most devices
-  refuse to proceed with an empty DNS field, but the actual value is
-  overridden by the redirect above
+| Field | Value |
+|---|---|
+| IP address | a free address on your network, e.g. `192.168.1.50` |
+| Subnet mask | same as your network, usually `255.255.255.0` |
+| Gateway | this computer's LAN IP (shown in the "LAN address" row of the GUI) |
+| DNS | any valid-looking value, e.g. `1.1.1.1` — most devices refuse an empty field, but the actual value is overridden by the redirect above |
 
-Note: if a firewall such as `firewalld` or `ufw` drops packets in the `forward`
-chain by default, you need to allow forwarding.
+> [!NOTE]
+> If a firewall such as `firewalld` or `ufw` drops packets in the `forward`
+> chain by default, you need to allow forwarding.
 
 ## Differences from the Windows version
 
@@ -326,10 +353,14 @@ logs. To get a separate instance while debugging:
 UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
 ```
 
+<details open>
+<summary><b>Common issues</b></summary>
+<br>
+
 - **The engine will not start**: `journalctl -u unwall -n 50`
 - **My strategy selection reverts**: the selection is only pending until you
-  press **AYARLARI UYGULA** / **ZAPRET'İ BAŞLAT**; the status line shows it as
-  `uygulanmadı → ...`.
+  press **APPLY SETTINGS** / **START**; the status line shows it as
+  `not applied → ...`.
 - **Nothing changed**: check that the rules are loaded with
   `sudo nft list table ip unwall`; if the hostlist mode is `manual`, make
   sure the domain is in the list.
@@ -360,6 +391,20 @@ UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
   `200`). You can also skip the `build` step and use the existing
   `/opt/zapret` and `/opt/zapret2` binaries; they are looked up automatically
   when no locally built engine is found.
+
+</details>
+
+Still stuck? Open an issue using the
+[bug report template](https://github.com/WinTone01/Unwall/issues/new/choose)
+— filling in its environment table (version, install method, distro, engine,
+strategy, hostlist mode) up front is the single biggest time-saver.
+
+## Contributing
+
+Bug reports, strategy presets for other countries and pull requests are all
+welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how the project is laid
+out, what CI checks on every push, and what to verify locally before opening
+a PR.
 
 ## License
 

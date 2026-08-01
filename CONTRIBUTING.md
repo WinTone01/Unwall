@@ -40,6 +40,14 @@ CLI backend (bash), `gui/unwall_gui.py` is the GTK4/libadwaita frontend
   gui/unwall_gui.py` (CI does this too) and, if you can, actually launch
   `unwall` and click through the change — `UW_NO_UNIQUE=1 unwall` starts an
   isolated instance that won't fight with one you already have running.
+  If you add a user-facing string, add its Turkish translation to the `TR`
+  dict too (missing entries silently fall back to English even in Turkish
+  mode — easy to miss since nothing errors).
+- **Changing the GUI's layout**: refresh `docs/screenshots/gui-en.png` and
+  `gui-tr.png` (both READMEs embed them) — a real window screenshot, not a
+  mockup. `UW_NO_UNIQUE=1 UW_LANG=en unwall` / `UW_LANG=tr unwall` launch an
+  isolated instance; redact any real LAN/IP addresses visible in the
+  "Gateway mode" section before committing the image.
 - **Anything touching `nftables` rules or `--hostlist-auto*` flags**: these
   are easy to get subtly wrong in ways that only show up against real ISP
   DPI, which most contributors (including the maintainer, most of the
