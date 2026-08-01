@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.3.11"
+VERSION = "1.3.12"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -93,6 +93,10 @@ def save_lang(lang):
 
 # Kaynak dizeler İngilizce; Türkçe karşılıkları burada.
 TR = {
+    'Automatic (zapret learns)': 'Otomatik (zapret öğrenir)',
+    'Manual (hostlist.txt)': 'Elle (hostlist.txt)',
+    'Off (all traffic)': 'Kapalı (tüm trafik)',
+    'Automatic': 'Otomatik',
     'Only the domains in the list go through the engine; the rest of your traffic is untouched.': 'Yalnızca listedeki alan adları motordan geçer; normal trafiğiniz etkilenmez.',
     'If your ISP tampers with DNS, zapret alone is not enough. Queries are carried over an encrypted channel.': "ISS'niz DNS'e müdahale ediyorsa zapret tek başına yetmez. Sorgular şifreli kanaldan taşınır.",
     'Blockcheck tries dozens of strategies; it can take several minutes and the engine is stopped while it runs. The result is written to the blockcheck strategy automatically.': "Blockcheck onlarca strateji dener; birkaç dakika sürebilir ve bu sırada motor geçici olarak durdurulur. Sonuç otomatik olarak 'Analiz Sonucu' stratejisine yazılır.",

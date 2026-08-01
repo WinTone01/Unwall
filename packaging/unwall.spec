@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.3.11
+Version:        1.3.12
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.12-1
+- Fix hostlist mode dropdown values (Automatic/Manual/Off, DNS method Automatic) not being translated in Turkish; they silently fell back to English.
 * Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.11-1
 - Fix "Restart now" after Update now reopening the old version: spawning a new process before quitting the old single-instance one raced the D-Bus name, so the new process just re-raised the still-old-code instance instead of starting fresh. Restart now uses execvp to replace the current process in place.
 * Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.10-1
