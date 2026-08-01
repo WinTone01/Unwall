@@ -10,6 +10,7 @@ SRC="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$(sed -n 's/^VERSION="\(.*\)"/\1/p' "$SRC/bin/unwallctl")"
 [ -n "$VERSION" ] || { echo "sürüm bin/unwallctl içinden okunamadı" >&2; exit 1; }
 
+# shellcheck disable=SC2043 # tek bağımlılık şimdilik, ileride genişleyebilir
 for c in dpkg-deb; do
 	command -v "$c" >/dev/null 2>&1 || { echo "gerekli: $c (apt install dpkg-dev)" >&2; exit 1; }
 done

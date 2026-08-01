@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  shell-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n (syntax check)
+        run: |
+          set -e
+          for f in uninstall.sh install.sh bin/unwall bin/unwallctl \
+                   packaging/build-deb.sh packaging/build-rpm.sh \
+                   packaging/build-appimage.sh packaging/release.sh; do
+            echo "== $f =="
+            bash -n "$f"
+          done
+      - name: shellcheck
+        run: |
+          set -e
+          for f in uninstall.sh install.sh bin/unwall bin/unwallctl \
+                   packaging/build-deb.sh packaging/build-rpm.sh \
+                   packaging/build-appimage.sh packaging/release.sh; do
+            echo "== $f =="
+            shellcheck -S warning "$f"
+          done
+
+  python-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: py_compile the GUI
+        run: python3 -m py_compile gui/unwall_gui.py
+
+  metainfo-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install appstream
+        run: sudo apt-get update -q && sudo apt-get install -y -q appstream
+      - name: appstreamcli validate
+        run: appstreamcli validate --pedantic share/io.github.WinTone01.Unwall.metainfo.xml
+
+  version-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: versions must match across bin/unwallctl, GUI and packaging
+        run: |
+          set -e
+          ctl_v="$(sed -n 's/^VERSION="\(.*\)"/\1/p' bin/unwallctl)"
+          gui_v="$(sed -n 's/^VERSION = "\(.*\)"/\1/p' gui/unwall_gui.py)"
+          pkg_v="$(sed -n 's/^pkgver=\(.*\)/\1/p' packaging/PKGBUILD)"
+          rpm_v="$(sed -n 's/^Version:[[:space:]]*\(.*\)/\1/p' packaging/unwall.spec)"
+          echo "unwallctl=$ctl_v gui=$gui_v PKGBUILD=$pkg_v spec=$rpm_v"
+          [ -n "$ctl_v" ] || { echo "could not read VERSION from bin/unwallctl" >&2; exit 1; }
+          for v in "$gui_v" "$pkg_v" "$rpm_v"; do
+            if [ "$v" != "$ctl_v" ]; then
+              echo "version mismatch: bin/unwallctl=$ctl_v but found $v" >&2
+              exit 1
+            fi
+          done

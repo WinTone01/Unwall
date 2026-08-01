@@ -24,6 +24,7 @@ NFT_TABLE="unwall"
 
 # Arayüz dili: UW_LANG=tr|en, yoksa yerel ayardan. Türkçe dışındaki her
 # şey İngilizce sayılır.
+# shellcheck disable=SC2209 # "tr*)" below is a case pattern, not a mistyped assignment
 case "${UW_LANG:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}" in
 tr*|TR*) UW_UI_LANG=tr ;;
 *)       UW_UI_LANG=en ;;
