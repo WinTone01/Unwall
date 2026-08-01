@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.3.10"
+VERSION = "1.3.11"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -808,19 +808,22 @@ class Window(Adw.ApplicationWindow):
             dlg.present()
 
     def _restart_app(self):
-        # "unwall" PATH üzerinden başlatılır - Flatpak içindeyken de bu,
-        # sandbox'ın kendi /app/bin/unwall'ına çözülür, host-spawn'a gerek
-        # yoktur (kendi sürecimizi yeniden başlatmak host işlemi değildir).
+        # Bu, tekil örnekli (single-instance) bir GtkApplication: D-Bus'ta
+        # APP_ID adını tutar. Önce yeni bir süreç başlatıp SONRA bunu
+        # quit() etmek bir yarış durumuydu - eski süreç adı henüz
+        # bırakmamışken yeni süreç başlarsa, GApplication onu ayrı bir
+        # örnek olarak açmak yerine sadece eski (hâlâ eski kodu belleğinde
+        # çalıştıran) örneği öne getiriyordu; kullanıcı elle kapatıp
+        # tekrar açtığında eski süreç gerçekten sonlanmış olduğundan sorun
+        # yaşanmıyordu. execvp mevcut süreç görüntüsünü yerinde
+        # değiştirdiği için (D-Bus bağlantısı dahil) bu yarışı tamamen
+        # ortadan kaldırıyor: "unwall" PATH üzerinden çözülür - Flatpak
+        # içindeyken de bu, sandbox'ın kendi /app/bin/unwall'ına çözülür.
         try:
-            subprocess.Popen(
-                ["unwall"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
+            os.execvp("unwall", ["unwall"])
         except OSError as exc:
             log.error("could not restart: %s", exc)
             self.toast(T("Could not restart automatically; please reopen Unwall yourself."))
-            return
-        self.get_application().quit()
 
     # -----------------------------------------------------------------
     # durum yenileme
