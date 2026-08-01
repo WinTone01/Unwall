@@ -1,0 +1,121 @@
+name: Bug report
+description: Something isn't working as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. The more of the fields
+        below you fill in, the faster this can actually get fixed — most of
+        the time lost on past reports was spent going back and forth just to
+        find out which version/engine/mode was involved.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences — what's wrong?
+      placeholder: e.g. "hostlist-auto never adds a domain that is genuinely blocked"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Environment
+        Run `unwallctl status` and copy the relevant lines below, or fill
+        the table in by hand.
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Fill in what you know. Get the version with `unwallctl version`,
+        the distro with `cat /etc/os-release | grep PRETTY_NAME`.
+      value: |
+        | Field              | Value                          |
+        |--------------------|---------------------------------|
+        | Unwall version     | (`unwallctl version`)          |
+        | Install method     | deb / rpm / AppImage / Flatpak / install.sh |
+        | Distro             | (`cat /etc/os-release`)        |
+        | Engine             | zapret2 (LUA) / zapret (classic) |
+        | Strategy           | e.g. kablonet, mobil, analiz    |
+        | Hostlist mode      | off / auto / manual             |
+        | Gateway mode       | on / off                        |
+        | ISP (optional)     |                                  |
+      render: markdown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options:
+        - zapret2 (LUA, default)
+        - zapret (classic)
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: hostlist_mode
+    attributes:
+      label: Hostlist mode
+      options:
+        - "auto (zapret learns)"
+        - manual
+        - "off (all traffic through the engine)"
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you click/run, in order?
+      placeholder: |
+        1. Set strategy to "kablonet", hostlist mode to "auto"
+        2. Start the service
+        3. Visit https://example.com
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Whatever's relevant — no need to paste all of it:
+        - `journalctl -u unwall -n 50 --no-pager`
+        - `sudo tail -n 50 /var/log/unwall/hostlist-auto.log`
+        - `unwallctl doctor`
+        - the exact error text from the terminal or the GUI's Output panel
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and this isn't a duplicate
+          required: true
+        - label: I ran `unwallctl doctor` (or checked the GUI's diagnostics) and it didn't point to the problem
+          required: false
