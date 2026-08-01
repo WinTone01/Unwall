@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.6"
+VERSION="1.3.7"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"

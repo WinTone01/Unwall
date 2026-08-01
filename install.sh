@@ -230,13 +230,22 @@ fi
 step "dosyalar kopyalanıyor"
 install -d "$BINDIR" "$LIBDIR" "$ETCDIR" "$OPTDIR" "$LOGDIR"
 
-install -m 0755 "$SRC/bin/unwallctl" "$CTL"
+# unwallctl'i doğrudan $CTL üzerine yazmıyoruz: `unwallctl self-update` bu
+# betiği tam olarak $CTL'den (hâlâ çalışan bir bash sürecinden) çağırıyor.
+# `install`/`cp` hedefi yerinde kesip yeniden yazdığından, kendi kendini
+# güncelleyen bir süreç için bu, dosyayı çalışırken bozuk offset'lerle
+# okumasına yol açar ("unbound variable" gibi anlamsız hatalar). Aynı
+# dizinde geçici bir dosyaya yazıp atomik `mv` ile yerine koyuyoruz; bu
+# şekilde hâlâ çalışan eski süreç eski inode'u okumaya devam eder.
+CTL_TMP="$(mktemp "$BINDIR/.unwallctl.XXXXXX")"
+install -m 0755 "$SRC/bin/unwallctl" "$CTL_TMP"
 sed -i \
 	-e "s|^UW_LIB=.*|UW_LIB=\"\${UW_LIB:-$LIBDIR}\"|" \
 	-e "s|^UW_ETC=.*|UW_ETC=\"\${UW_ETC:-$ETCDIR}\"|" \
 	-e "s|^UW_OPT=.*|UW_OPT=\"\${UW_OPT:-$OPTDIR}\"|" \
 	-e "s|^UW_LOG=.*|UW_LOG=\"\${UW_LOG:-$LOGDIR}\"|" \
-	"$CTL"
+	"$CTL_TMP"
+mv -f "$CTL_TMP" "$CTL"
 
 install -m 0755 "$SRC/bin/unwall" "$BINDIR/unwall"
 sed -i "s|^UW_LIB=.*|UW_LIB=\"\${UW_LIB:-$LIBDIR}\"|" "$BINDIR/unwall"
