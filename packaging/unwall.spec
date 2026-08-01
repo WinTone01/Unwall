@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.3.7
+Version:        1.3.8
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.8-1
+- Lower --hostlist-auto-fail-threshold to 1 (engine default 3): one genuinely failed connection attempt is now enough to auto-learn a domain, instead of needing 3 within 60 seconds.
 * Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.7-1
 - Fix install.sh corrupting a running unwallctl self-update: writing bin/unwallctl in place (not atomically) could rewrite the very script that was executing it, producing bogus "unbound variable" errors right at the end of a successful self-update. Now written to a temp file and renamed into place.
 * Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.6-1

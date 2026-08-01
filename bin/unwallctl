@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.7"
+VERSION="1.3.8"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -408,12 +408,21 @@ build_engine_cmd() {
 	auto)
 		touch "$UW_ETC/autohostlist.txt" 2>/dev/null || true
 		args+=("--hostlist-auto=$UW_ETC/autohostlist.txt")
+		# Motorun varsayılanı 60 saniyede 3 ayrı başarısız deneme ister.
+		# Gerçekte kullanıcılar genelde tek bir başarısız yüklemeden sonra
+		# sayfayı yeniliyor ve strateji ikinci denemede zaten geçiyor - bu
+		# da 3'e hiç ulaşılmadan bir daha asla o domain'i öğrenmiyoruz
+		# olur (bkz. issue #1). Eşiği 1'e indirerek tek bir gerçek
+		# başarısızlıktan (kendi retrans eşiği hâlâ 3, yani rastgele bir
+		# ağ sıçraması yeterli değil) sonra ekliyoruz; böylece bir sonraki
+		# ziyarette refresh'e bile gerek kalmaz.
+		args+=("--hostlist-auto-fail-threshold=1")
 		# hostlist-auto bir alan adını yalnızca aynı motor profili içinde
 		# UW_ETC/log/hostlist-auto.log tanınabilir bir "başarısız bağlantı"
-		# örüntüsü (60 sn içinde 3 başarısızlık, TCP retrans ya da UDP
-		# giden≥4/gelen≤1 - motorun kendi varsayılanları) gördüğünde ekler.
-		# Strateji zaten işe yarıyorsa böyle bir örüntü hiç oluşmaz ve
-		# domain haklı olarak eklenmez. Sorun giderme için:
+		# örüntüsü (TCP retrans ya da UDP giden≥4/gelen≤1 - motorun kendi
+		# varsayılanları) gördüğünde ekler. Strateji zaten işe yarıyorsa
+		# böyle bir örüntü hiç oluşmaz ve domain haklı olarak eklenmez.
+		# Sorun giderme için:
 		mkdir -p "$UW_LOG" 2>/dev/null || true
 		args+=("--hostlist-auto-debug=$UW_LOG/hostlist-auto.log")
 		;;

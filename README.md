@@ -336,10 +336,13 @@ UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
 - **QUIC/HTTP3 sites broke**: set `PORTS_UDP=` (empty) in the configuration.
 - **`Automatic (zapret learns)` hostlist mode isn't adding new domains**:
   it only adds a domain after it sees a recognizable "blocked connection"
-  pattern (by default: 3 failures within 60 seconds — TCP retransmits, or
-  at least 4 outgoing/at most 1 incoming UDP packets) for a domain that
-  *isn't already desynced*. If your strategy already gets through cleanly,
-  that pattern never happens and the domain is correctly never added.
+  pattern (since v1.3.8: 1 failed attempt; the engine's own default is 3
+  within 60 seconds, which we lower with `--hostlist-auto-fail-threshold=1`
+  so one bad load is enough — a single attempt still needs 3 TCP
+  retransmits by default, so a random network blip won't count) for a
+  domain that *isn't already desynced*. If your strategy already gets
+  through cleanly, that pattern never happens and the domain is correctly
+  never added.
   Before v1.3.6, genuinely blocked domains could also fail to be learned
   because only outgoing traffic was queued to the engine — zapret2's own
   auto-hostlist detector needs to see the *reply* direction too (an

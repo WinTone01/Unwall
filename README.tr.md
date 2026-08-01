@@ -336,10 +336,13 @@ UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
 - **QUIC/HTTP3 siteleri bozuldu**: config'te `PORTS_UDP=` (boş) yapın.
 - **"Otomatik (zapret öğrenir)" hostlist modu yeni domain eklemiyor**: bir
   domain yalnızca *henüz desync edilmemişken* tanınabilir bir "bağlantı
-  engellendi" örüntüsü (varsayılan: 60 saniyede 3 başarısızlık — TCP
-  retransmit, ya da en az 4 giden/en fazla 1 gelen UDP paketi) görülürse
-  eklenir. Stratejiniz zaten sorunsuz çalışıyorsa bu örüntü hiç oluşmaz ve
-  domain haklı olarak eklenmez. v1.3.6 öncesinde, gerçekten engellenen
+  engellendi" örüntüsü (v1.3.8'den beri: tek bir başarısız deneme — motorun
+  kendi varsayılanı 60 saniyede 3'tür, `--hostlist-auto-fail-threshold=1`
+  ile düşürüyoruz ki tek bir kötü yükleme yetsin; tek bir deneme hâlâ
+  varsayılan olarak 3 TCP retransmit gerektirdiğinden rastgele bir ağ
+  sıçraması sayılmaz) görülürse eklenir. Stratejiniz zaten sorunsuz
+  çalışıyorsa bu örüntü hiç oluşmaz ve domain haklı olarak eklenmez.
+  v1.3.6 öncesinde, gerçekten engellenen
   domainler de öğrenilemeyebiliyordu, çünkü yalnızca giden trafik motora
   kuyruklanıyordu — zapret2'nin kendi otomatik-hostlist algılayıcısı gelen
   yönü de (enjekte edilmiş bir RST ya da engel sayfasına HTTP yönlendirmesi)
