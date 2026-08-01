@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.12"
+VERSION="1.3.13"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -237,6 +237,27 @@ lua_dir() {
 
 detect_wan() {
 	ip -4 route show default 2>/dev/null | awk '/dev/ {for(i=1;i<=NF;i++) if($i=="dev") {print $(i+1); exit}}'
+}
+
+# CIDR önekini (ör. 24) noktalı ondalık alt ağ maskesine (255.255.255.0)
+# çevirir. Ağ geçidi yardım sayfasında kullanıcıya "genelde 255.255.255.0"
+# gibi bir tahmin yerine gerçek değeri gösterebilmek için.
+cidr_to_netmask() {
+	local cidr="${1:-24}" mask="" i octet
+	[ "$cidr" -ge 0 ] 2>/dev/null && [ "$cidr" -le 32 ] || cidr=24
+	for i in 1 2 3 4; do
+		if [ "$cidr" -ge 8 ]; then
+			octet=255
+			cidr=$((cidr - 8))
+		elif [ "$cidr" -gt 0 ]; then
+			octet=$((256 - 2 ** (8 - cidr)))
+			cidr=0
+		else
+			octet=0
+		fi
+		mask="${mask}${mask:+.}${octet}"
+	done
+	printf '%s' "$mask"
 }
 
 # Bu makinenin şu an fiilen kullandığı DNS çözümleyicisinin adresini
@@ -1189,15 +1210,27 @@ parse_blockcheck() {
 
 cmd_gateway_info() {
 	load_config
-	local wan lan ip
+	local wan lan ip lan_line lan_iface lan_ip lan_prefix lan_mask
 	wan="${WAN_IFACE:-$(detect_wan)}"
 	ip="$(ip -4 -o addr show scope global 2>/dev/null | awk -v w="$wan" '$2==w {split($4,a,"/"); print a[1]; exit}')"
-	lan="$(ip -4 -o addr show scope global 2>/dev/null |
-		awk -v w="$wan" '$2!=w && $2 !~ /^(lo|docker|virbr|veth|br-|tailscale|wg|tun|tap|zt|podman)/ {split($4,a,"/"); print $2" "a[1]; exit}')"
-	# Tek NIC'li kurulumda LAN ve WAN aynı arayüzdir; istemcilerin ağ geçidi
-	# olarak gireceği adres bu makinenin o ağdaki IP'sidir.
-	[ -n "$lan" ] || lan="$wan $ip"
-	printf 'wan_iface=%s\nwan_ip=%s\nlan=%s\nenabled=%s\n' "$wan" "$ip" "$lan" "$GATEWAY_MODE"
+	lan_line="$(ip -4 -o addr show scope global 2>/dev/null |
+		awk -v w="$wan" '$2!=w && $2 !~ /^(lo|docker|virbr|veth|br-|tailscale|wg|tun|tap|zt|podman)/ {split($4,a,"/"); print $2" "a[1]" "a[2]; exit}')"
+	if [ -n "$lan_line" ]; then
+		read -r lan_iface lan_ip lan_prefix <<-EOF
+			$lan_line
+		EOF
+	else
+		# Tek NIC'li kurulumda LAN ve WAN aynı arayüzdir; istemcilerin ağ
+		# geçidi olarak gireceği adres bu makinenin o ağdaki IP'sidir.
+		lan_iface="$wan"
+		lan_ip="$ip"
+		lan_prefix="$(ip -4 -o addr show scope global 2>/dev/null |
+			awk -v w="$wan" '$2==w {split($4,a,"/"); print a[2]; exit}')"
+	fi
+	lan="$lan_iface $lan_ip"
+	lan_mask="$(cidr_to_netmask "${lan_prefix:-24}")"
+	printf 'wan_iface=%s\nwan_ip=%s\nlan=%s\nlan_ip=%s\nlan_mask=%s\nenabled=%s\n' \
+		"$wan" "$ip" "$lan" "$lan_ip" "$lan_mask" "$GATEWAY_MODE"
 }
 
 # =====================================================================

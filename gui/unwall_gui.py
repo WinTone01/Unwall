@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.3.12"
+VERSION = "1.3.13"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -177,7 +177,8 @@ TR = {
     'build engines': 'motorları derle',
     'disable encrypted DNS': 'şifreli DNS kapat',
     'enable encrypted DNS': 'şifreli DNS aç',
-    'gateway mode': 'ağ geçidi',
+    'gateway mode: on': 'ağ geçidi modu: açık',
+    'gateway mode: off': 'ağ geçidi modu: kapalı',
     'install service': 'servis kur',
     'none yet (run blockcheck)': 'yok (önce blockcheck)',
     'not applied → {}   (currently: {})': 'uygulanmadı → {}   (şu an: {})',
@@ -254,29 +255,76 @@ DNS_BACKENDS = [
     ("resolved", T("DoT - systemd-resolved (853)")),
 ]
 
-GATEWAY_HELP_EN = (
-    "This machine becomes a NAT router for your local network, so console and "
-    "TV traffic goes through zapret as well.\n\n"
-    "Enter these manually in the device's network settings:\n"
-    "  • Gateway: this computer's LAN IP address\n"
-    "  • Subnet mask: same as your network (usually 255.255.255.0)\n"
-    "  • DNS: 1.1.1.1 / 8.8.8.8\n\n"
-    "The go-pcap2socks + Npcap layer used on Windows is not needed; routing "
-    "and NAT are done by the kernel."
-)
+# Ağ geçidi yardım sayfasındaki her bölüm: (başlık, {ip}/{mask} yer
+# tutucularıyla gerçek değerlerin gireceği açıklama metni). Menü adları
+# üreticiden üreticiye küçük farklar gösterebilir (Samsung/Xiaomi vb.);
+# yol her zaman Wi-Fi ağının gelişmiş/statik IP ayarları altındadır.
+GATEWAY_SECTIONS_EN = [
+    (
+        "Console / TV (PlayStation, Xbox, Switch, …)",
+        "Enter these manually in the device's network settings:\n"
+        "  • IP address: any free address on your network, e.g. 192.168.1.50\n"
+        "  • Subnet mask: {mask}\n"
+        "  • Gateway: {ip}\n"
+        "  • DNS: any valid-looking value, e.g. 1.1.1.1 — most devices refuse "
+        "an empty field, but the real value is overridden by Unwall's own "
+        "redirect.",
+    ),
+    (
+        "Android",
+        "Settings → Network & Internet → Wi-Fi → tap your connected network "
+        "→ edit (pencil icon) → IP settings: Static\n"
+        "  • Gateway: {ip}\n"
+        "  • Network prefix length: 24 (equivalent to subnet mask {mask})\n"
+        "  • DNS 1: 1.1.1.1\n\n"
+        "Menu wording varies by manufacturer, but the Static/Manual IP "
+        "option is always under the Wi-Fi network's advanced settings.",
+    ),
+    (
+        "iPhone / iPad",
+        "Settings → Wi-Fi → tap the ⓘ next to your connected network → "
+        "Configure IP → Manual\n"
+        "  • IP Address: any free address on your network, e.g. 192.168.1.50\n"
+        "  • Subnet Mask: {mask}\n"
+        "  • Router: {ip}\n\n"
+        "Then tap Configure DNS → Manual and add a DNS server, e.g. 1.1.1.1.",
+    ),
+]
 
-GATEWAY_HELP_TR = (
-    "Bu makine yerel ağdaki cihazlar için NAT yapan bir yönlendiriciye dönüşür; "
-    "konsol/TV trafiği de zapret'ten geçer.\n\n"
-    "Cihazın ağ ayarlarına elle şunları girin:\n"
-    "  • Ağ geçidi (Gateway): bu bilgisayarın LAN IP adresi\n"
-    "  • Alt ağ maskesi: ağınızla aynı (genelde 255.255.255.0)\n"
-    "  • DNS: 1.1.1.1 / 8.8.8.8\n\n"
-    "Windows sürümündeki go-pcap2socks + Npcap katmanına gerek yoktur; "
-    "yönlendirme ve NAT çekirdek tarafından yapılır."
-)
+GATEWAY_SECTIONS_TR = [
+    (
+        "Konsol / TV (PlayStation, Xbox, Switch, …)",
+        "Cihazın ağ ayarlarına elle şunları girin:\n"
+        "  • IP adresi: ağınızda boş bir adres, örn. 192.168.1.50\n"
+        "  • Alt ağ maskesi: {mask}\n"
+        "  • Ağ geçidi (Gateway): {ip}\n"
+        "  • DNS: geçerli görünen herhangi bir değer, örn. 1.1.1.1 — çoğu "
+        "cihaz DNS alanı boşken devam etmiyor, ama gerçek değer Unwall'ın "
+        "kendi yönlendirmesiyle zaten geçersiz kılınıyor.",
+    ),
+    (
+        "Android",
+        "Ayarlar → Ağ ve İnternet → Wi-Fi → bağlı olduğunuz ağa dokunun "
+        "→ düzenle (kalem simgesi) → IP ayarları: Statik\n"
+        "  • Ağ geçidi (Gateway): {ip}\n"
+        "  • Ağ öneki uzunluğu: 24 ({mask} alt ağ maskesine karşılık gelir)\n"
+        "  • DNS 1: 1.1.1.1\n\n"
+        "Menü adları üreticiye göre değişebilir, ama Statik/Manuel IP "
+        "seçeneği her zaman Wi-Fi ağının gelişmiş ayarları altındadır.",
+    ),
+    (
+        "iPhone / iPad",
+        "Ayarlar → Wi-Fi → bağlı olduğunuz ağın yanındaki ⓘ simgesine "
+        "dokunun → IP'yi Yapılandır → Manuel\n"
+        "  • IP Adresi: ağınızda boş bir adres, örn. 192.168.1.50\n"
+        "  • Alt Ağ Maskesi: {mask}\n"
+        "  • Yönlendirici (Router): {ip}\n\n"
+        "Ardından DNS'i Yapılandır → Manuel'e dokunup bir DNS sunucusu "
+        "ekleyin, örn. 1.1.1.1.",
+    ),
+]
 
-GATEWAY_HELP = GATEWAY_HELP_TR if LANG == "tr" else GATEWAY_HELP_EN
+GATEWAY_SECTIONS = GATEWAY_SECTIONS_TR if LANG == "tr" else GATEWAY_SECTIONS_EN
 
 
 def ctl(*args, timeout=15):
@@ -317,6 +365,8 @@ class Window(Adw.ApplicationWindow):
         self._busy = False
         self._refreshing = False
         self._loading = True
+        self._gw_ip = ""
+        self._gw_mask = "255.255.255.0"
         # Kullanıcı bir seçim değiştirip henüz uygulamadıysa, periyodik durum
         # yenilemesi kontrolleri config'teki eski değerlere geri çevirmesin.
         self._dirty = False
@@ -510,14 +560,12 @@ class Window(Adw.ApplicationWindow):
         self.row_gw_info = Adw.ActionRow(title=T("LAN address"), subtitle="—")
         g_gw.add(self.row_gw_info)
 
-        exp = Adw.ExpanderRow(title=T("How do I configure the device?"))
-        lbl = Gtk.Label(label=GATEWAY_HELP, wrap=True, xalign=0)
-        lbl.set_margin_start(12)
-        lbl.set_margin_end(12)
-        lbl.set_margin_top(8)
-        lbl.set_margin_bottom(8)
-        exp.add_row(lbl)
-        g_gw.add(exp)
+        row_gw_help = Adw.ActionRow(
+            title=T("How do I configure the device?"), activatable=True
+        )
+        row_gw_help.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        row_gw_help.connect("activated", self.on_show_gateway_help)
+        g_gw.add(row_gw_help)
 
         # --- Otomatik başlatma ---
         g_svc = Adw.PreferencesGroup(title=T("Service"))
@@ -928,6 +976,8 @@ class Window(Adw.ApplicationWindow):
         self.row_gw_info.set_subtitle(
             f"{gwd.get('lan') or gwd.get('wan_ip') or '—'}  (WAN: {gwd.get('wan_iface') or '—'})"
         )
+        self._gw_ip = gwd.get("lan_ip") or gwd.get("wan_ip") or ""
+        self._gw_mask = gwd.get("lan_mask") or "255.255.255.0"
 
     def _refresh_dns(self):
         _, out = ctl("dns", "status", timeout=POLL_TIMEOUT)
@@ -1017,7 +1067,9 @@ class Window(Adw.ApplicationWindow):
             return
         self.mark_dirty()
         if self.status.get("running") == "1":
-            self.run_privileged(["restart", *self.pending_config()], title=T("gateway mode"))
+            title = T("gateway mode: on") if self.row_gateway.get_active() \
+                else T("gateway mode: off")
+            self.run_privileged(["restart", *self.pending_config()], title=title)
 
     def on_dns_toggled(self):
         if self._loading:
@@ -1124,6 +1176,39 @@ class Window(Adw.ApplicationWindow):
                 log.warning("could not open %s on host: %s", ETC_DIR, exc)
         else:
             Gio.AppInfo.launch_default_for_uri(f"file://{ETC_DIR}", None)
+
+    def on_show_gateway_help(self, *_):
+        ip = self._gw_ip or "192.168.1.1"
+        mask = self._gw_mask or "255.255.255.0"
+
+        page = Adw.PreferencesPage()
+        for title, body in GATEWAY_SECTIONS:
+            # GATEWAY_SECTIONS zaten seçili dile göre (EN/TR) hazırlanmış,
+            # burada ayrıca T() ile çevirmeye gerek yok.
+            group = Adw.PreferencesGroup(title=title)
+            lbl = Gtk.Label(
+                label=body.format(ip=ip, mask=mask), wrap=True, xalign=0,
+                selectable=True,
+            )
+            row = Adw.ActionRow()
+            row.set_child(lbl)
+            row.set_margin_top(4)
+            row.set_margin_bottom(4)
+            group.add(row)
+            page.add(group)
+
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar(title_widget=Adw.WindowTitle(
+            title=T("How do I configure the device?")
+        )))
+        toolbar.set_content(page)
+
+        win = Adw.Window(
+            transient_for=self, modal=True,
+            default_width=440, default_height=560,
+        )
+        win.set_content(toolbar)
+        win.present()
 
     def on_about(self, *_):
         kwargs = dict(

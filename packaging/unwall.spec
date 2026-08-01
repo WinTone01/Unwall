@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.3.12
+Version:        1.3.13
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.13-1
+- Fix gateway mode toggle logging a bare "=== gateway mode ===" line; now says on/off. Turn "How do I configure the device?" into a dedicated page with real Console/TV, Android and iPhone instructions using the machine's actual gateway IP and subnet mask instead of generic placeholders.
 * Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.12-1
 - Fix hostlist mode dropdown values (Automatic/Manual/Off, DNS method Automatic) not being translated in Turkish; they silently fell back to English.
 * Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.11-1
