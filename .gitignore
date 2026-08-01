@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 
 # packaging/build-*.sh çıktıları
+packaging/appimagetool
 packaging/*.deb
 packaging/RPMS/
 packaging/*.AppImage
