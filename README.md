@@ -339,10 +339,16 @@ UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
   pattern (by default: 3 failures within 60 seconds — TCP retransmits, or
   at least 4 outgoing/at most 1 incoming UDP packets) for a domain that
   *isn't already desynced*. If your strategy already gets through cleanly,
-  that pattern never happens and the domain is correctly never added — this
-  isn't a bug, it just means auto-learning has nothing to learn from. Watch
-  `sudo tail -f /var/log/unwall/hostlist-auto.log` while browsing to a
-  blocked site to see what the engine is actually observing.
+  that pattern never happens and the domain is correctly never added.
+  Before v1.3.6, genuinely blocked domains could also fail to be learned
+  because only outgoing traffic was queued to the engine — zapret2's own
+  auto-hostlist detector needs to see the *reply* direction too (an
+  injected RST or an HTTP redirect to a block page), which v1.3.6's
+  nftables rules now queue as well. If you're still on an older version,
+  upgrade first. Watch `sudo tail -f /var/log/unwall/hostlist-auto.log`
+  while browsing to a blocked site to see what the engine is actually
+  observing — a completely empty log after several failed loads means the
+  reply direction still isn't reaching the engine.
 - **Another DPI tool is running**: `byedpi`, `tpws`, the upstream
   `zapret.service` or a VPN that creates a TUN device will fight over the queue.
 - **Upstream zapret is already installed** (`/opt/zapret`, `zapret.service`):

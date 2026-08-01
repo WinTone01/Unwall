@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.5"
+VERSION="1.3.6"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -257,14 +257,41 @@ nft_ruleset() {
 	printf '\tchain postrouting {\n'
 	printf '\t\ttype filter hook postrouting priority 99; policy accept;\n'
 	if [ -n "$PORTS_TCP" ]; then
-		printf '\t\tmark and %s == 0 meta l4proto tcp tcp dport { %s } ct original packets 1-8 queue num %s bypass\n' \
+		printf '\t\tmark and %s == 0 meta l4proto tcp tcp dport { %s } ct original packets 1-12 queue num %s bypass\n' \
 			"$DESYNC_MARK" "$PORTS_TCP" "$QNUM"
+		if [ "$HOSTLIST_MODE" = "auto" ]; then
+			printf '\t\tmark and %s == 0 meta l4proto tcp tcp dport { %s } tcp flags fin,rst queue num %s bypass\n' \
+				"$DESYNC_MARK" "$PORTS_TCP" "$QNUM"
+		fi
 	fi
 	if [ -n "$PORTS_UDP" ]; then
-		printf '\t\tmark and %s == 0 meta l4proto udp udp dport { %s } ct original packets 1-8 queue num %s bypass\n' \
+		printf '\t\tmark and %s == 0 meta l4proto udp udp dport { %s } ct original packets 1-12 queue num %s bypass\n' \
 			"$DESYNC_MARK" "$PORTS_UDP" "$QNUM"
 	fi
 	printf '\t}\n'
+
+	if [ "$HOSTLIST_MODE" = "auto" ]; then
+		# hostlist-auto'nun RST/HTTP-yönlendirme türü engelleri algılayabilmesi
+		# için zapret2'nin kendisi de gelen (reply) yönün de kuyruğa alınmasını
+		# şart koşuyor (manual.en.md, "Autohostlist failure detector"); sadece
+		# giden yönü kuyruklarsak nfqws2 hiçbir zaman gelen RST/redirect
+		# görmez ve hostlist-auto-debug.log boş kalır, domain hiç eklenmez.
+		printf '\tchain prerouting {\n'
+		printf '\t\ttype filter hook prerouting priority -99; policy accept;\n'
+		if [ -n "$PORTS_TCP" ]; then
+			printf '\t\tmark and %s == 0 meta l4proto tcp tcp sport { %s } ct reply packets 1-12 queue num %s bypass\n' \
+				"$DESYNC_MARK" "$PORTS_TCP" "$QNUM"
+			printf '\t\tmark and %s == 0 meta l4proto tcp tcp sport { %s } tcp flags & (syn | ack) == (syn | ack) queue num %s bypass\n' \
+				"$DESYNC_MARK" "$PORTS_TCP" "$QNUM"
+			printf '\t\tmark and %s == 0 meta l4proto tcp tcp sport { %s } tcp flags fin,rst queue num %s bypass\n' \
+				"$DESYNC_MARK" "$PORTS_TCP" "$QNUM"
+		fi
+		if [ -n "$PORTS_UDP" ]; then
+			printf '\t\tmark and %s == 0 meta l4proto udp udp sport { %s } ct reply packets 1-12 queue num %s bypass\n' \
+				"$DESYNC_MARK" "$PORTS_UDP" "$QNUM"
+		fi
+		printf '\t}\n'
+	fi
 
 	if [ "$GATEWAY_MODE" = "1" ]; then
 		local wan="$WAN_IFACE"
@@ -305,6 +332,14 @@ cmd_nft_apply() {
 	modprobe nft_queue 2>/dev/null || true
 	cmd_nft_flush
 	nft_ruleset | nft -f - || die "$(t 'could not apply the nftables rules')"
+	if [ "$HOSTLIST_MODE" = "auto" ]; then
+		# Bazı DPI'lar (ör. bazı Türk ISS'leri) yanlış ACK numaralı sahte RST
+		# gönderir; conntrack bunu varsayılan olarak INVALID sayıp connbytes
+		# eşleşmesinden düşürür, hostlist-auto de bu RST'yi hiç göremez.
+		# zapret2'nin kendi common/linux_fw.sh'ı da autohostlist modunda
+		# aynı sebeple bunu açar.
+		sysctl -qw net.netfilter.nf_conntrack_tcp_be_liberal=1 2>/dev/null || true
+	fi
 	if [ "$GATEWAY_MODE" = "1" ]; then
 		sysctl -qw net.ipv4.ip_forward=1
 		# Aynı arayüzden yönlendirmede ICMP redirect istemciyi yönlendiriciyi

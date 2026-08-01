@@ -339,10 +339,16 @@ UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
   engellendi" örüntüsü (varsayılan: 60 saniyede 3 başarısızlık — TCP
   retransmit, ya da en az 4 giden/en fazla 1 gelen UDP paketi) görülürse
   eklenir. Stratejiniz zaten sorunsuz çalışıyorsa bu örüntü hiç oluşmaz ve
-  domain haklı olarak eklenmez — bu bir hata değil, öğrenecek bir şey
-  olmadığı anlamına gelir. Motorun gerçekte ne gördüğünü görmek için
-  engellenen bir siteye girerken `sudo tail -f /var/log/unwall/hostlist-auto.log`
-  komutunu izleyin.
+  domain haklı olarak eklenmez. v1.3.6 öncesinde, gerçekten engellenen
+  domainler de öğrenilemeyebiliyordu, çünkü yalnızca giden trafik motora
+  kuyruklanıyordu — zapret2'nin kendi otomatik-hostlist algılayıcısı gelen
+  yönü de (enjekte edilmiş bir RST ya da engel sayfasına HTTP yönlendirmesi)
+  görmesi gerekiyor; v1.3.6'daki nftables kuralları artık bunu da
+  kuyruklar. Hâlâ eski bir sürümdeyseniz önce güncelleyin. Motorun gerçekte
+  ne gördüğünü görmek için engellenen bir siteye girerken
+  `sudo tail -f /var/log/unwall/hostlist-auto.log` komutunu izleyin — birkaç
+  başarısız denemeden sonra log tamamen boşsa, gelen yön hâlâ motora
+  ulaşmıyor demektir.
 - **Başka bir DPI aracı çalışıyor**: `byedpi`, `tpws`, upstream `zapret.service`
   veya TUN kuran bir VPN aynı anda açıksa kuyruk çakışır.
 - **Sistemde zaten upstream zapret kurulu** (`/opt/zapret`, `zapret.service`):

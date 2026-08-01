@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.3.5
+Version:        1.3.6
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.6-1
+- Fix hostlist-auto never learning genuinely blocked domains: queue the reply direction (incoming RST/redirect) too, not just outgoing traffic, and relax conntrack RST validity checking, per zapret2's own documented requirement.
 * Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.5-1
 - Offer to restart after self-update; fix NameError crash (f_ instead of f-string) in blockcheck confirmation.
 * Fri Jul 31 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.4-1
