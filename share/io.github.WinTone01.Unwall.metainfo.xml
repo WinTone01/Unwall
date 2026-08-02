@@ -59,6 +59,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.3.15" date="2026-08-02">
+      <description>
+        <p>Fixed v1.3.14's ufw/firewalld gateway-forwarding fix silently failing under the service's ProtectSystem=strict sandbox (/etc/ufw and /etc/firewalld were read-only, so the rule never actually got added); failures are no longer silenced.</p>
+      </description>
+    </release>
     <release version="1.3.14" date="2026-08-02">
       <description>
         <p>Fixed gateway mode devices getting "connected, no internet" when ufw/firewalld drop forwarded traffic by default. nft-apply now automatically adds a targeted ufw/firewalld forwarding rule for gateway mode and reverts it when gateway mode is turned off; unwallctl doctor / GUI Diagnostics show what was detected.</p>

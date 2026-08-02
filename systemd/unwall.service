@@ -18,7 +18,16 @@ KillMode=mixed
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_MODULE CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID
 ProtectHome=yes
 ProtectSystem=strict
+# /etc/ufw ve /etc/firewalld: gateway modunda "ufw route allow" /
+# "firewall-cmd --add-forward" ile yönlendirme kuralı eklerken bu
+# dosyalara yazması gerekiyor (bkz. ensure_forward_allowed() in
+# bin/unwallctl) - olmadan ProtectSystem=strict altında sessizce
+# başarısız olur. "-" öneki dosya sistemde yoksa (o güvenlik duvarı
+# kurulu değilse) servis başlatmayı engellemez.
 ReadWritePaths=@ETCDIR@ @LOGDIR@
+ReadWritePaths=-/etc/ufw
+ReadWritePaths=-/var/lib/ufw
+ReadWritePaths=-/etc/firewalld
 PrivateTmp=yes
 ProtectControlGroups=yes
 RestrictRealtime=yes

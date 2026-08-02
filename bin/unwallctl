@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.14"
+VERSION="1.3.15"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -359,18 +359,25 @@ nft_ruleset() {
 # yönlendirme kurallarını etkilemez. Zaten idempotenttir: ufw aynı kuralı
 # ikinci kez eklemeyi kendisi atlar.
 ensure_forward_allowed() {
-	local wan="$1"
+	local wan="$1" out
 	if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
-		ufw route allow in on "$wan" out on "$wan" comment 'unwall gateway mode' \
-			>/dev/null 2>&1 || true
+		if out="$(ufw route allow in on "$wan" out on "$wan" comment 'unwall gateway mode' 2>&1)"; then
+			info "ufw: yönlendirme kuralı eklendi/zaten vardı ($wan)"
+		else
+			warn "ufw route allow başarısız oldu, gateway modundaki cihazlar internete çıkamayabilir: $out"
+		fi
 	fi
 	# firewalld'de eşdeğeri: bölge çapında yönlendirmeyi açmak. Yalnızca
 	# firewall-cmd --add-forward destekleyen sürümlerde (>=0.9) işe yarar;
 	# eski sürümlerde sessizce hiçbir şey yapmaz - bu durumda doctor/GUI
 	# uyarısı devreye girer (bkz. cmd_doctor, "ağ geçidi yönlendirme").
 	if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-		firewall-cmd --add-forward >/dev/null 2>&1 || true
-		firewall-cmd --permanent --add-forward >/dev/null 2>&1 || true
+		if out="$(firewall-cmd --add-forward 2>&1)"; then
+			firewall-cmd --permanent --add-forward >/dev/null 2>&1 || true
+			info "firewalld: yönlendirme açıldı"
+		else
+			warn "firewalld --add-forward desteklenmiyor/başarısız oldu (eski sürüm olabilir): $out"
+		fi
 	fi
 }
 
