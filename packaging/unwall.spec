@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.3.15
+Version:        1.3.16
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Sun Aug 02 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.16-1
+- Fix hostlist-auto never being able to write autohostlist.txt or its debug log ("write to auto hostlist: Permission denied" repeating forever): without --user, the engine drops root to a fixed uid (0x7FFFFFFF) that maps to no real account, so root:root files were never writable after the drop. The engine now drops to "nobody" instead, and the relevant files are chowned to it (added CAP_CHOWN to the service's capability set for this).
 * Sun Aug 02 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.15-1
 - Fix v1.3.14's ufw/firewalld auto-fix silently failing: the service's ProtectSystem=strict sandbox made /etc/ufw (and /etc/firewalld) read-only, so "ufw route allow" couldn't persist its rule and the error was swallowed. Added those paths to ReadWritePaths and made failures actually log instead of being silenced.
 * Sun Aug 02 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.14-1
