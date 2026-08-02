@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.13"
+VERSION="1.3.14"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -347,6 +347,45 @@ nft_ruleset() {
 	printf '}\n'
 }
 
+# Bir güvenlik duvarı yöneticisi (ufw, firewalld) "forward" zincirinde
+# varsayılan olarak paket düşürüyorsa, Unwall'ın kendi nftables kuralları
+# (bkz. nft_ruleset) LAN cihazının trafiğini kabul etse bile paket
+# geçmez - netfilter'da aynı hook'taki her tablo ayrı ayrı onay vermeli.
+# Sonuç kullanıcı için "ağ geçidine bağlandım ama internet yok" olarak
+# görünür ve nereden kaynaklandığı hiç belli değildir. Global varsayılan
+# politikayı değiştirmek yerine ufw'nin bu tam senaryo için sunduğu hedefli
+# "route" kuralını ekliyoruz (man ufw: ROUTE RULES) - bu, varsayılan
+# politikadan önce değerlendirilir ve sistemin geri kalanındaki başka
+# yönlendirme kurallarını etkilemez. Zaten idempotenttir: ufw aynı kuralı
+# ikinci kez eklemeyi kendisi atlar.
+ensure_forward_allowed() {
+	local wan="$1"
+	if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+		ufw route allow in on "$wan" out on "$wan" comment 'unwall gateway mode' \
+			>/dev/null 2>&1 || true
+	fi
+	# firewalld'de eşdeğeri: bölge çapında yönlendirmeyi açmak. Yalnızca
+	# firewall-cmd --add-forward destekleyen sürümlerde (>=0.9) işe yarar;
+	# eski sürümlerde sessizce hiçbir şey yapmaz - bu durumda doctor/GUI
+	# uyarısı devreye girer (bkz. cmd_doctor, "ağ geçidi yönlendirme").
+	if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+		firewall-cmd --add-forward >/dev/null 2>&1 || true
+		firewall-cmd --permanent --add-forward >/dev/null 2>&1 || true
+	fi
+}
+
+# Ağ geçidi modu kapatıldığında ekleneni geri alır.
+revert_forward_allowed() {
+	local wan="$1"
+	if command -v ufw >/dev/null 2>&1; then
+		ufw --force route delete allow in on "$wan" out on "$wan" >/dev/null 2>&1 || true
+	fi
+	if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+		firewall-cmd --remove-forward >/dev/null 2>&1 || true
+		firewall-cmd --permanent --remove-forward >/dev/null 2>&1 || true
+	fi
+}
+
 cmd_nft_apply() {
 	need_root
 	load_config
@@ -362,6 +401,7 @@ cmd_nft_apply() {
 		# aynı sebeple bunu açar.
 		sysctl -qw net.netfilter.nf_conntrack_tcp_be_liberal=1 2>/dev/null || true
 	fi
+	local gw_wan="${WAN_IFACE:-$(detect_wan)}"
 	if [ "$GATEWAY_MODE" = "1" ]; then
 		sysctl -qw net.ipv4.ip_forward=1
 		# Aynı arayüzden yönlendirmede ICMP redirect istemciyi yönlendiriciyi
@@ -381,6 +421,9 @@ cmd_nft_apply() {
 			sysctl -qw net.ipv4.conf.all.route_localnet=1
 			;;
 		esac
+		[ -n "$gw_wan" ] && ensure_forward_allowed "$gw_wan"
+	elif [ -n "$gw_wan" ]; then
+		revert_forward_allowed "$gw_wan"
 	fi
 	return 0
 }
@@ -1007,6 +1050,27 @@ cmd_doctor() {
 		check "TUN çakışması" 1 "sing-box çalışıyor"
 	else
 		check "TUN çakışması" 0
+	fi
+
+	# Ağ geçidi modunda LAN cihazlarının "bağlandım ama internet yok"
+	# yaşamasının en sık sebebi: ufw/firewalld'in kendi forward zinciri,
+	# Unwall'ın kendi nftables kuralları bunu kabul etse bile paketi
+	# düşürüyor olması. nft-apply artık bunu kendisi düzeltiyor
+	# (ensure_forward_allowed); burada yalnızca ne yapıldığını/yapılacağını
+	# bilgi amaçlı gösteriyoruz, root gerekmeden (unwallctl doctor genelde
+	# root olmadan çalıştırılır) okunabilen dosyalardan.
+	if [ "$GATEWAY_MODE" = "1" ]; then
+		if command -v ufw >/dev/null 2>&1 && grep -q '^ENABLED=yes' /etc/ufw/ufw.conf 2>/dev/null; then
+			if grep -q 'DEFAULT_FORWARD_POLICY="DROP"' /etc/default/ufw 2>/dev/null; then
+				check "ağ geçidi yönlendirme" 0 "ufw varsayılanı DROP, unwall kendi route kuralını otomatik ekliyor"
+			else
+				check "ağ geçidi yönlendirme" 0 "ufw forward politikası zaten ACCEPT"
+			fi
+		elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+			check "ağ geçidi yönlendirme" 0 "firewalld etkin; unwall --add-forward uyguluyor (eski sürümlerde işe yaramayabilir - sorun olursa elle 'sudo firewall-cmd --add-forward' deneyin)"
+		else
+			check "ağ geçidi yönlendirme" 0 "yönlendirmeyi engelleyen bir güvenlik duvarı bulunamadı"
+		fi
 	fi
 
 	local dns; dns="$(cmd_dnscheck | sed -n 's/^result=//p')"

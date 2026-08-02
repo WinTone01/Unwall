@@ -292,7 +292,13 @@ In the manual network settings of the device (PlayStation, Xbox, Switch, TV):
 
 > [!NOTE]
 > If a firewall such as `firewalld` or `ufw` drops packets in the `forward`
-> chain by default, you need to allow forwarding.
+> chain by default (ufw's `DEFAULT_FORWARD_POLICY` is `DROP` out of the box
+> on many distros), gateway mode devices get "connected, no internet".
+> Since v1.3.14, `unwallctl` detects this and adds a targeted `ufw route
+> allow` rule (or `firewall-cmd --add-forward` on firewalld) automatically
+> whenever gateway mode is applied — no manual firewall changes needed.
+> `unwallctl doctor` / the GUI's Diagnostics show what was detected under
+> "gateway forwarding".
 
 ## Differences from the Windows version
 

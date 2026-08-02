@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.3.13
+Version:        1.3.14
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Sun Aug 02 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.14-1
+- Fix gateway mode devices getting "connected, no internet": ufw/firewalld's own forward chain can drop traffic even when Unwall's own nftables rules accept it. nft-apply now automatically adds a targeted ufw route/firewalld forward rule for gateway mode, and reverts it when gateway mode is turned off. unwallctl doctor / GUI Diagnostics show what was detected under "gateway forwarding".
 * Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.13-1
 - Fix gateway mode toggle logging a bare "=== gateway mode ===" line; now says on/off. Turn "How do I configure the device?" into a dedicated page with real Console/TV, Android and iPhone instructions using the machine's actual gateway IP and subnet mask instead of generic placeholders.
 * Sat Aug 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.3.12-1

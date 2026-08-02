@@ -290,7 +290,14 @@ Cihazın (PlayStation, Xbox, Switch, TV) manuel ağ ayarlarına:
 
 > [!NOTE]
 > `firewalld`/`ufw` gibi bir güvenlik duvarı `forward` zincirinde varsayılan
-> olarak paket düşürüyorsa yönlendirmeye izin vermeniz gerekir.
+> olarak paket düşürüyorsa (birçok dağıtımda ufw'nin `DEFAULT_FORWARD_POLICY`
+> ayarı kutudan çıktığı gibi `DROP`'tur) ağ geçidi modundaki cihazlar
+> "bağlandım ama internet yok" ile karşılaşır. v1.3.14'ten beri
+> `unwallctl` bunu kendisi tespit edip ağ geçidi modu her uygulandığında
+> hedefli bir `ufw route allow` kuralı (firewalld'de `firewall-cmd
+> --add-forward`) otomatik ekliyor — elle güvenlik duvarı ayarı gerekmez.
+> Ne tespit edildiğini `unwallctl doctor` ya da arayüzün Teşhis
+> menüsünden "ağ geçidi yönlendirme" satırında görebilirsiniz.
 
 ## Windows sürümünden farklar
 
