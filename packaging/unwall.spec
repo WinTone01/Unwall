@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.4.0
+Version:        1.4.1
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Sun Aug 02 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.4.1-1
+- Status page now shows the carrier without pressing a button (detected in the background on first run, then remembered per network), plus encrypted DNS and gateway mode state at a glance.
 * Sun Aug 02 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.4.0-1
 - Reorganise the interface into four pages (Status / Settings / Lists / Log) with an adaptive view switcher, a proper status hero and a width clamp, instead of one very long scrolling page.
 - New Lists page: add and remove domains from the GUI (new "unwallctl hostlist show|add|remove" commands) instead of being sent to a file manager.

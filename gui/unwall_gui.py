@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -35,6 +35,9 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, "gui.conf")
 # GitHub sürüm kontrolü: sonuç günde bir kez taze tutulur, aradaki
 # başlatmalarda ağa çıkılmaz.
 UPDATE_CACHE_FILE = os.path.join(CONFIG_DIR, "update-check.json")
+# Ağ parmak izi -> son bilinen operatör. Aynı ağa dönüldüğünde ASN
+# sorgusunu tekrarlamadan gösterebilmek için.
+CARRIER_CACHE_FILE = os.path.join(CONFIG_DIR, "carrier.json")
 UPDATE_CHECK_INTERVAL = 24 * 3600
 UPDATE_REPO = "WinTone01/Unwall"
 
@@ -205,7 +208,11 @@ TR = {
     'Detect carrier automatically': 'Operatörü otomatik algıla',
     'Looks up your ASN over encrypted DNS and suggests a profile': 'ASN bilginizi şifreli DNS üzerinden sorgulayıp profil önerir',
     'Detect': 'Algıla',
-    'Detected carrier': 'Algılanan operatör',
+    'Carrier': 'Operatör',
+    'not detected yet': 'henüz algılanmadı',
+    'off': 'kapalı',
+    'on · {}': 'açık · {}',
+    'configured but not active · {}': 'ayarlı ama etkin değil · {}',
     'carrier detection': 'operatör tespiti',
     'network changed': 'ağ değişti',
     'Detection failed': 'Tespit başarısız',
@@ -723,10 +730,12 @@ class Window(Adw.ApplicationWindow):
         g_info = Adw.PreferencesGroup(title=T("Connection"))
         self.info_rows = {}
         for key, title in (
+            ("carrier", T("Carrier")),
             ("engine", T("Engine")),
             ("strategy", T("Strategy")),
             ("hostlist", T("Hostlist mode")),
-            ("carrier", T("Detected carrier")),
+            ("dns", T("Encrypted DNS")),
+            ("gateway", T("Gateway mode")),
         ):
             row = Adw.ActionRow(title=title, subtitle="—")
             row.add_css_class("property")
@@ -1190,18 +1199,42 @@ class Window(Adw.ApplicationWindow):
             self.config.get("STRATEGY", "?"))
         self.info_rows["hostlist"].set_subtitle(
             self.config.get("HOSTLIST_MODE", "?"))
-        self.info_rows["carrier"].set_subtitle(self._carrier or "—")
+        self.info_rows["carrier"].set_subtitle(self._carrier or T("not detected yet"))
 
-        # Ağ değişti mi? (arayüz + router + WAN IP)
+        d = getattr(self, "dns", {}) or {}
+        if d.get("backend", "none") == "none":
+            self.info_rows["dns"].set_subtitle(T("off"))
+        elif d.get("encrypted") == "1":
+            self.info_rows["dns"].set_subtitle(
+                T("on · {}").format(d.get("backend", "?")))
+        else:
+            self.info_rows["dns"].set_subtitle(
+                T("configured but not active · {}").format(d.get("backend", "?")))
+
+        if self.config.get("GATEWAY_MODE") == "1":
+            self.info_rows["gateway"].set_subtitle(
+                T("on · {}").format(self._gw_ip or "?"))
+        else:
+            self.info_rows["gateway"].set_subtitle(T("off"))
+
+        # Ağ değişti mi? (arayüz + router + WAN IP). İlk açılışta da
+        # çalışır: operatör satırı elle düğmeye basılmayı beklemesin.
         netfp = f"{gwd.get('wan_iface','')}|{gwd.get('router','')}|{gwd.get('wan_ip','')}"
-        if self._netfp is None:
+        if netfp != self._netfp:
+            first = self._netfp is None
             self._netfp = netfp
-        elif netfp != self._netfp:
-            self._netfp = netfp
-            log.info("network changed: %s", netfp)
-            if self.row_autodetect.get_active() and not self._busy:
-                self.log("\n=== " + T("network changed") + " ===")
-                self._detect_isp(apply_silently=True)
+            if not first:
+                log.info("network changed: %s", netfp)
+            cached = self._carrier_cache_get(netfp)
+            if cached:
+                # Bu ağı daha önce gördük: ağa hiç çıkmadan göster.
+                self._apply_carrier(cached, netfp, mode="cached")
+            elif not self._busy:
+                self._start_carrier_detect(
+                    netfp,
+                    mode="apply" if (not first and self.row_autodetect.get_active())
+                    else "silent",
+                )
 
     def _refresh_dns(self):
         _, out = ctl("dns", "status", timeout=POLL_TIMEOUT)
@@ -1430,53 +1463,117 @@ class Window(Adw.ApplicationWindow):
         except OSError as exc:
             log.warning("could not save autodetect setting: %s", exc)
 
+    def _carrier_cache_load(self):
+        try:
+            with open(CARRIER_CACHE_FILE) as fh:
+                data = json.load(fh)
+                return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _carrier_cache_get(self, netfp):
+        entry = self._carrier_cache_load().get(netfp)
+        return entry if isinstance(entry, dict) and entry.get("asn") else None
+
+    def _carrier_cache_put(self, netfp, entry):
+        """Ağ başına operatör hafızası: aynı ağa dönüldüğünde ağa hiç
+        çıkmadan gösterebilmek için."""
+        try:
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            cache = self._carrier_cache_load()
+            cache[netfp] = entry
+            # Sınırsız büyümesin: en son görülen 20 ağ yeter.
+            if len(cache) > 20:
+                for key in list(cache)[:-20]:
+                    cache.pop(key, None)
+            with open(CARRIER_CACHE_FILE, "w") as fh:
+                json.dump(cache, fh)
+        except (OSError, ValueError) as exc:
+            log.debug("could not save carrier cache: %s", exc)
+
     def on_detect_isp(self, *_):
         self.stack.set_visible_child_name("log")
         self.log("\n=== " + T("carrier detection") + " ===")
-        self._detect_isp(apply_silently=False)
+        # Elle tetiklenen tespit önbelleği atlar; kullanıcı bilerek istedi.
+        self._start_carrier_detect(self._netfp, mode="ask")
 
-    def _detect_isp(self, apply_silently):
-        """ASN'den operatörü bulur. apply_silently=True ise (ağ değişimi)
-        bulunan profili doğrudan uygular; aksi halde kullanıcıya sorar."""
-        code, out = ctl("detect-isp", timeout=20)
-        d = parse_kv(out)
-        if code != 0 or d.get("result") != "ok":
+    def _start_carrier_detect(self, netfp, mode):
+        """ASN tespitini arka planda çalıştırır (arayüzü kilitlemez).
+
+        mode: 'silent'  - yalnızca göster (açılış / ağ değişimi)
+              'apply'   - ağ değişti ve otomatik geçiş açık: sormadan uygula
+              'ask'     - kullanıcı düğmeye bastı: uygulamadan önce sor
+        """
+        try:
+            proc = Gio.Subprocess.new(
+                [*HOST_PREFIX, CTL, f"--lang={LANG}", "detect-isp"],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
+            )
+        except GLib.Error as exc:
+            log.debug("carrier detection could not start: %s", exc.message)
+            if mode == "ask":
+                self.toast(T("Detection failed"))
+            return
+        proc.communicate_utf8_async(
+            None, None, self._on_carrier_detect_done, (netfp, mode))
+
+    def _on_carrier_detect_done(self, proc, res, user_data):
+        netfp, mode = user_data
+        try:
+            ok, out, _ = proc.communicate_utf8_finish(res)
+        except GLib.Error as exc:
+            log.debug("carrier detection failed: %s", exc.message)
+            ok, out = False, ""
+
+        d = parse_kv(out or "")
+        if not ok or d.get("result") != "ok":
             reason = d.get("reason") or T("could not reach the lookup service")
-            self.log(f"{T('Detection failed')}: {reason}")
-            if not apply_silently:
+            log.info("carrier detection failed: %s", reason)
+            if mode == "ask":
+                self.log(f"{T('Detection failed')}: {reason}")
                 self.toast(T("Detection failed"))
             return
 
-        asn, as_name = d.get("asn", "?"), d.get("as_name", "?")
-        strategy, current = d.get("strategy", ""), d.get("current", "")
+        entry = {"asn": d.get("asn", "?"), "as_name": d.get("as_name", "?"),
+                 "strategy": d.get("strategy", "")}
+        if netfp:
+            self._carrier_cache_put(netfp, entry)
+        self._apply_carrier(entry, netfp, mode)
+
+    def _apply_carrier(self, entry, _netfp, mode):
+        asn, as_name = entry.get("asn", "?"), entry.get("as_name", "?")
+        strategy = entry.get("strategy", "")
         self._carrier = f"AS{asn} · {as_name}"
         self.info_rows["carrier"].set_subtitle(self._carrier)
-        self.log(f"AS{asn} · {as_name}")
+        if mode == "cached":
+            return
+        if mode == "ask":
+            self.log(self._carrier)
 
         if not strategy:
             # Bilinen bir operatör değil: elle seçim ya da blockcheck gerekir.
-            self.log(T("No ready-made profile for this carrier; "
-                       "use ISP analysis (blockcheck)."))
-            if not apply_silently:
+            if mode == "ask":
+                self.log(T("No ready-made profile for this carrier; "
+                           "use ISP analysis (blockcheck)."))
                 self.toast(T("No ready-made profile for this carrier"))
             return
 
         label = next((l for i, l in self.strategies if i == strategy), strategy)
-        if strategy == current:
-            self.log(T("Already using the matching profile: {}").format(label))
-            if not apply_silently:
+        if strategy == self.config.get("STRATEGY", ""):
+            if mode == "ask":
+                self.log(T("Already using the matching profile: {}").format(label))
                 self.toast(T("Already using the matching profile"))
             return
 
-        if apply_silently:
+        if mode == "apply":
+            self.log("\n=== " + T("network changed") + " ===")
             self.log(T("Network changed, switching to: {}").format(label))
             self._select_strategy(strategy)
             self.run_privileged(
                 ["restart", *self.pending_config()],
                 title=T("carrier detection"))
-            return
-
-        self._confirm_strategy_switch(strategy, label)
+        elif mode == "ask":
+            self._confirm_strategy_switch(strategy, label)
 
     def _confirm_strategy_switch(self, strategy, label):
         heading = T("Carrier detected")
