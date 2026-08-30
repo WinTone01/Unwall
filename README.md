@@ -66,6 +66,7 @@ own country is a one-line change in
 | **systemd service** | starts at boot and keeps running with the GUI closed |
 | **Gateway mode** | routes devices on your LAN (console, smart TV) through this machine — the replacement for `go-pcap2socks` + Npcap on Windows |
 | **Encrypted DNS** | one switch sets up DoH (`dnscrypt-proxy`, port 443) or DoT (`systemd-resolved`, port 853) — replaces the YogaDNS recommendation from the Windows version, fully reversible |
+| **Carrier auto-detection** | looks your ASN up over encrypted DNS and picks the matching profile; optionally re-detects when you move to another network |
 | **Diagnostics** | DNS interference check, conflicting-tool and queue detection |
 | **English and Turkish** | picks your locale automatically, switchable from the menu (`UW_LANG=en`/`tr` overrides it) |
 | **Privilege separation** | the GUI runs as your normal user; privileged work goes through a single helper script via polkit |
@@ -194,6 +195,9 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `sudo unwallctl enable\|disable` | start at boot |
 | `sudo unwallctl blockcheck [engine]` | ISP analysis |
 | `unwallctl dnscheck [domain]` | DNS interference check |
+| `unwallctl detect-isp` | look the carrier up from your ASN, suggest a profile |
+| `unwallctl hostlist show LIST` | print a list (`manual`/`auto`/`exclude`) |
+| `sudo unwallctl hostlist add\|remove LIST DOMAIN` | add / remove a domain |
 | `sudo unwallctl dns enable\|disable` | turn encrypted DNS (DoT/DoH) on / off |
 | `unwallctl dns status\|test` | encrypted DNS state / test |
 | `unwallctl doctor` | environment and conflict diagnostics |

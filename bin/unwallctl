@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.3.16"
+VERSION="1.4.0"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -993,6 +993,156 @@ for a in d.get("Answer", []) or []:
 ' 2>/dev/null
 }
 
+# DoH üzerinden TXT kaydı sorgular. dns_reference_lookup ile aynı gerekçe:
+# düz DNS ISS tarafından ele geçirilebilir, bu sorgu 443/tcp + TLS üzerinden
+# gider.
+doh_txt() {
+	local name="$1"
+	command -v curl >/dev/null 2>&1 || return 1
+	curl -s --max-time 6 -H 'accept: application/dns-json' \
+		"https://cloudflare-dns.com/dns-query?name=$name&type=TXT" 2>/dev/null |
+	python3 -c '
+import json, sys
+try:
+	d = json.load(sys.stdin)
+except Exception:
+	sys.exit(0)
+for a in d.get("Answer", []) or []:
+	if a.get("type") == 16:
+		print(a.get("data", "").strip("\"'"'"'"))
+' 2>/dev/null
+}
+
+# Genel IP adresini DNS'e hiç ihtiyaç duymadan öğrenir: doğrudan 1.1.1.1'e
+# HTTPS. Alan adı çözümlemesi gerekmediği için DNS engelleme/zehirlemesinden
+# etkilenmez.
+detect_public_ip() {
+	command -v curl >/dev/null 2>&1 || return 1
+	curl -s --max-time 6 https://1.1.1.1/cdn-cgi/trace 2>/dev/null |
+		sed -n 's/^ip=//p' | head -1
+}
+
+# ASN -> hazır strateji kimliği. Kimlikler lib/strategies.conf ile aynı
+# olmalı. Kaynaklar (Ağustos 2026'da doğrulandı): ipinfo.io/AS<n>,
+# bgp.he.net/AS<n>.
+#   9121  Türk Telekom / TTNet (hem ev hem mobil)
+#   34984 Superonline (Turkcell fiber)
+#   16135 Turkcell (mobil)
+#   15897 Vodafone Türkiye
+#   47524 Türksat / Kablonet (kablo)
+#   12735 TurkNet (kendine özel preset yok, genel profile düşer)
+asn_to_strategy() {
+	case "$1" in
+	9121)  printf 'turk-telekom' ;;
+	34984) printf 'superonline' ;;
+	16135) printf 'turkcell-mobil' ;;
+	15897) printf 'vodafone' ;;
+	47524) printf 'kablonet' ;;
+	*)     printf '' ;;
+	esac
+}
+
+# Genel IP -> ASN -> operatör -> önerilen strateji.
+# Hiçbir şeyi kendiliğinden uygulamaz; yalnızca ne bulduğunu yazdırır.
+cmd_detect_isp() {
+	load_config
+	local ip asn as_name rev origin strategy
+
+	ip="$(detect_public_ip)" || true
+	if [ -z "$ip" ]; then
+		printf 'result=error\nreason=%s\n' "genel IP adresi öğrenilemedi (ağ yok?)"
+		return 1
+	fi
+
+	# Team Cymru origin sorgusu: 1.2.3.4 -> 4.3.2.1.origin.asn.cymru.com
+	rev="$(printf '%s' "$ip" | awk -F. 'NF==4 {print $4"."$3"."$2"."$1}')"
+	if [ -z "$rev" ]; then
+		printf 'result=error\nreason=%s\n' "IPv4 adresi ayrıştırılamadı: $ip"
+		return 1
+	fi
+	# "47524 | 24.133.203.0/24 | TR | ripencc | 2012-03-08"
+	origin="$(doh_txt "${rev}.origin.asn.cymru.com" | head -1)"
+	asn="$(printf '%s' "$origin" | awk -F'|' '{gsub(/ /,"",$1); print $1}')"
+	if [ -z "$asn" ]; then
+		printf 'result=error\nreason=%s\n' "ASN sorgusu yanıt vermedi"
+		return 1
+	fi
+
+	# "47524 | TR | ripencc | 2008-07-02 | AS-TURKSAT - AS-TURKSAT, TR"
+	as_name="$(doh_txt "AS${asn}.asn.cymru.com" | head -1 |
+		awk -F'|' '{sub(/^ */,"",$5); print $5}')"
+
+	strategy="$(asn_to_strategy "$asn")"
+	printf 'result=ok\npublic_ip=%s\nasn=%s\nas_name=%s\nstrategy=%s\ncurrent=%s\n' \
+		"$ip" "$asn" "${as_name:-?}" "$strategy" "$STRATEGY"
+}
+
+# =====================================================================
+# Alan adı listeleri (arayüzün "Listeler" sayfası buradan yönetir)
+# =====================================================================
+
+# Kısa ad -> dosya yolu. Arayüzün ve CLI'ın aynı adları kullanması için
+# tek yerde tutuluyor.
+hostlist_file() {
+	case "$1" in
+	manual)  printf '%s/hostlist.txt' "$UW_ETC" ;;
+	auto)    printf '%s/autohostlist.txt' "$UW_ETC" ;;
+	exclude) printf '%s/excludelist.txt' "$UW_ETC" ;;
+	*) return 1 ;;
+	esac
+}
+
+# Kullanıcıdan gelen alan adını doğrular. Listeler doğrudan motora
+# besleniyor; boşluk, kabuk metakarakteri ya da URL parçası içeren bir
+# satır motoru şaşırtır. Sadece alan adı biçimine izin veriyoruz.
+hostlist_valid_domain() {
+	printf '%s' "$1" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$'
+}
+
+cmd_hostlist() {
+	local action="${1:-}" which="${2:-}" domain="${3:-}" file
+	case "$action" in
+	show)
+		file="$(hostlist_file "$which")" || die "geçersiz liste: $which (manual|auto|exclude)"
+		[ -f "$file" ] || return 0
+		# Yorum ve boş satırları ayıkla; arayüz ham liste bekliyor.
+		grep -vE '^\s*(#|$)' "$file" 2>/dev/null || true
+		;;
+	add)
+		need_root
+		file="$(hostlist_file "$which")" || die "geçersiz liste: $which (manual|auto|exclude)"
+		domain="$(printf '%s' "$domain" | tr 'A-Z' 'a-z' | tr -d '[:space:]')"
+		[ -n "$domain" ] || die "alan adı boş"
+		hostlist_valid_domain "$domain" || die "geçersiz alan adı: $domain"
+		touch "$file"
+		if grep -qxF "$domain" "$file" 2>/dev/null; then
+			info "zaten listede: $domain"
+			return 0
+		fi
+		printf '%s\n' "$domain" >> "$file"
+		info "eklendi: $domain -> $(basename "$file")"
+		;;
+	remove)
+		need_root
+		file="$(hostlist_file "$which")" || die "geçersiz liste: $which (manual|auto|exclude)"
+		domain="$(printf '%s' "$domain" | tr 'A-Z' 'a-z' | tr -d '[:space:]')"
+		[ -n "$domain" ] || die "alan adı boş"
+		[ -f "$file" ] || die "liste yok: $file"
+		# Dosyanın sahipliğini/iznini koru: yerinde düzenleme yerine geçici
+		# dosyaya yazıp içeriği geri kopyalıyoruz (autohostlist.txt motorun
+		# yazabilmesi için nobody'e ait, mv onu root'a çevirirdi).
+		local tmp; tmp="$(mktemp)"
+		grep -vxF "$domain" "$file" > "$tmp" 2>/dev/null || true
+		cat "$tmp" > "$file"
+		rm -f "$tmp"
+		info "silindi: $domain <- $(basename "$file")"
+		;;
+	*)
+		die "kullanım: unwallctl hostlist show|add|remove <manual|auto|exclude> [alan-adı]"
+		;;
+	esac
+}
+
 cmd_dnscheck() {
 	# ISS DNS'e müdahale ediyor mu? Sistem çözümleyicisi ile şifreli bir
 	# referans sorgusunun yanıtlarını karşılaştırırız; kesişim yoksa
@@ -1302,8 +1452,24 @@ cmd_gateway_info() {
 	local wan lan ip lan_line lan_iface lan_ip lan_prefix lan_mask
 	wan="${WAN_IFACE:-$(detect_wan)}"
 	ip="$(ip -4 -o addr show scope global 2>/dev/null | awk -v w="$wan" '$2==w {split($4,a,"/"); print a[1]; exit}')"
-	lan_line="$(ip -4 -o addr show scope global 2>/dev/null |
-		awk -v w="$wan" '$2!=w && $2 !~ /^(lo|docker|virbr|veth|br-|tailscale|wg|tun|tap|zt|podman)/ {split($4,a,"/"); print $2" "a[1]" "a[2]; exit}')"
+	# LAN arayüzü adayları: WAN dışındaki global adresli arayüzler. İsim
+	# desenine güvenmek yetmiyor - docker/podman/pterodactyl gibi köprüler
+	# sürekli yeni isimler üretiyor ve yanlışlıkla "LAN" seçilince ağ
+	# geçidi modu kullanıcıya konteyner ağının IP'sini gösteriyor.
+	# Bunun yerine fiziksel olup olmadığına bakıyoruz: gerçek NIC'lerin
+	# /sys/class/net/<if>/device sembolik bağı vardır, sanal köprülerin yok.
+	local cand
+	lan_line=""
+	while read -r cand; do
+		[ -n "$cand" ] || continue
+		set -- $cand
+		[ -e "/sys/class/net/$1/device" ] || continue
+		lan_line="$cand"
+		break
+	done <<-EOF
+		$(ip -4 -o addr show scope global 2>/dev/null |
+			awk -v w="$wan" '$2!=w && $2!="lo" {split($4,a,"/"); print $2" "a[1]" "a[2]}')
+	EOF
 	if [ -n "$lan_line" ]; then
 		read -r lan_iface lan_ip lan_prefix <<-EOF
 			$lan_line
@@ -1318,8 +1484,13 @@ cmd_gateway_info() {
 	fi
 	lan="$lan_iface $lan_ip"
 	lan_mask="$(cidr_to_netmask "${lan_prefix:-24}")"
-	printf 'wan_iface=%s\nwan_ip=%s\nlan=%s\nlan_ip=%s\nlan_mask=%s\nenabled=%s\n' \
-		"$wan" "$ip" "$lan" "$lan_ip" "$lan_mask" "$GATEWAY_MODE"
+	# Varsayılan ağ geçidi adresi: arayüzün "ağ değişti mi?" parmak izinin
+	# bir parçası (aynı arayüzde farklı bir Wi-Fi ağına geçmek wan_iface'i
+	# değiştirmez ama router'ı değiştirir).
+	local router
+	router="$(ip -4 route show default 2>/dev/null | awk '/via/ {for(i=1;i<=NF;i++) if($i=="via") {print $(i+1); exit}}')"
+	printf 'wan_iface=%s\nwan_ip=%s\nlan=%s\nlan_ip=%s\nlan_mask=%s\nrouter=%s\nenabled=%s\n' \
+		"$wan" "$ip" "$lan" "$lan_ip" "$lan_mask" "${router:-}" "$GATEWAY_MODE"
 }
 
 # =====================================================================
@@ -1465,6 +1636,10 @@ Kullanım: unwallctl <komut> [argüman]
   build [zapret2|zapret]    motorları derle          (root)
   blockcheck [motor]        ISS analizi yap          (root)
   dnscheck [domain]         DNS müdahalesi kontrolü
+  detect-isp                operatörü ASN'den algıla, strateji öner
+  hostlist show LISTE       liste içeriği (manual|auto|exclude)
+  hostlist add LISTE ALAN   listeye alan adı ekle       (root)
+  hostlist remove LISTE ALAN  listeden alan adı sil     (root)
   dns status [--probe]      şifreli DNS durumu
   dns test                  şifreli DNS'i sına
   dns enable [sağlayıcı] [arka-uç]   DoT/DoH aç      (root)
@@ -1501,6 +1676,8 @@ main() {
 	build)        cmd_build "$@" ;;
 	blockcheck)   cmd_blockcheck "$@" ;;
 	dnscheck)     cmd_dnscheck "$@" ;;
+	detect-isp)   cmd_detect_isp ;;
+	hostlist)     cmd_hostlist "$@" ;;
 	dns)          cmd_dns "$@" ;;
 	doctor)       cmd_doctor ;;
 	conflicts)    cmd_conflicts ;;

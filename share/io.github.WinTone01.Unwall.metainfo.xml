@@ -59,6 +59,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.4.0" date="2026-08-02">
+      <description>
+        <p>Reorganised the interface into four pages — Status, Settings, Lists and Log — with an adaptive view switcher instead of one very long scrolling page.</p>
+        <p>Domains can now be added and removed straight from the new Lists page, and Unwall can detect your carrier from its ASN over encrypted DNS and pick the matching profile, optionally re-detecting when you move to another network.</p>
+      </description>
+    </release>
     <release version="1.3.16" date="2026-08-02">
       <description>
         <p>Fixed hostlist-auto never being able to write autohostlist.txt or its debug log: without --user the engine dropped root to a fixed uid mapping to no real account. It now drops to "nobody" and the relevant files are chowned accordingly.</p>

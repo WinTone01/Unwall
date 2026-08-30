@@ -66,6 +66,7 @@ ibarettir — bkz. [CONTRIBUTING.md](CONTRIBUTING.md) (İngilizce).
 | **systemd servisi** | açılışta otomatik başlatma, arayüz kapalıyken de çalışır |
 | **Ağ geçidi modu** | konsol, akıllı TV gibi cihazların trafiğini bu makine üzerinden geçirir (Windows'taki `go-pcap2socks` + Npcap'in karşılığı) |
 | **Şifreli DNS** | tek anahtarla DoH (`dnscrypt-proxy`, 443) veya DoT (`systemd-resolved`, 853) — YogaDNS önerisinin yerine geçer, geri alınabilir |
+| **Operatör otomatik tespiti** | ASN'nizi şifreli DNS üzerinden sorgulayıp uygun profili seçer; istenirse başka bir ağa geçtiğinizde yeniden algılar |
 | **Teşhis** | DNS müdahalesi kontrolü, çakışan araç/kuyruk tespiti |
 | **Türkçe ve İngilizce** | arayüz dili yerel ayardan seçilir, menüden değiştirilebilir (`UW_LANG=tr`/`en` ile de zorlanır) |
 | **Yetki ayrımı** | arayüz normal kullanıcı olarak çalışır, ayrıcalıklı işler polkit üzerinden tek bir yardımcı betiğe gider |
@@ -193,6 +194,9 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `sudo unwallctl enable\|disable` | açılışta otomatik başlatma |
 | `sudo unwallctl blockcheck [motor]` | ISS analizi |
 | `unwallctl dnscheck [domain]` | DNS müdahalesi kontrolü |
+| `unwallctl detect-isp` | operatörü ASN'den algıla, profil öner |
+| `unwallctl hostlist show LİSTE` | listeyi yazdır (`manual`/`auto`/`exclude`) |
+| `sudo unwallctl hostlist add\|remove LİSTE ALAN` | alan adı ekle / sil |
 | `sudo unwallctl dns enable\|disable` | şifreli DNS (DoT/DoH) aç / kapat |
 | `unwallctl dns status\|test` | şifreli DNS durumu / sınaması |
 | `unwallctl doctor` | ortam / çakışma teşhisi |
