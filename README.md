@@ -278,12 +278,34 @@ on Windows is not needed; routing is done by the kernel.
 
 DNS is handled the same way `go-pcap2socks` handled it on Windows, just with
 a kernel rule instead of a bundled proxy: an nftables rule transparently
-redirects every DNS query (TCP and UDP, port 53) coming from the LAN to this
-machine's own resolver — the same one it uses itself, including encrypted
-DNS if you've turned that on. **Whatever DNS server the device is configured
-with is ignored**; if your ISP blocks port 53 outbound, that's exactly why
-this exists — the device's packets never actually leave your network toward
+redirects every DNS query (TCP and UDP, port 53) coming from the LAN to a
+resolver on this machine. **Whatever DNS server the device is configured with
+is ignored** — the device's packets never actually leave your network toward
 that address, they get rewritten to this machine before they do.
+
+On networks that hijack *every* packet sent to port 53 and answer it
+themselves (Türk Telekom and TT Mobil do), this is the only thing that works:
+as long as the console's own DNS query reaches the ISP, it never learns the
+real IP of a blocked site, and the connection goes to the wrong address even
+though DPI bypass itself is working.
+
+The redirect target is picked automatically:
+
+- **With encrypted DNS over DoH (dnscrypt-proxy)**, queries go straight to
+  `127.0.0.1:5300`, i.e. into the encrypted channel. This is the recommended
+  setup for consoles and TVs: `unwallctl dns enable cloudflare dnscrypt` (or
+  Encrypted DNS + Method: DoH in the GUI).
+- **With encrypted DNS off, or on DoT (systemd-resolved)**, a second listener
+  is opened on the LAN address (`DNSStubListenerExtra` in
+  `/etc/systemd/resolved.conf.d/91-unwall-gateway.conf`) and queries are sent
+  there. resolved's main `127.0.0.53` stub only answers queries coming from a
+  local address and silently drops the ones redirected from the LAN, so
+  pointing the rule at it does not work. The listener is removed again when
+  gateway mode is turned off.
+- **With no usable target**, the redirect rule is not installed at all — a
+  device using its own DNS beats a black-holed one. The GUI's Status page then
+  says *device DNS not redirected* under "Gateway mode", and `unwallctl doctor`
+  flags the "ağ geçidi DNS" row.
 
 In the manual network settings of the device (PlayStation, Xbox, Switch, TV):
 
@@ -303,6 +325,17 @@ In the manual network settings of the device (PlayStation, Xbox, Switch, TV):
 > whenever gateway mode is applied — no manual firewall changes needed.
 > `unwallctl doctor` / the GUI's Diagnostics show what was detected under
 > "gateway forwarding".
+
+> [!NOTE]
+> The DNS redirect needs a second ufw rule: once the query is redirected
+> its destination is this machine itself, so the packet goes through
+> `INPUT` rather than `forward` and the `ufw route allow` rule above does
+> not cover it — with ufw's default deny-incoming policy it dies as
+> `[UFW BLOCK] ... DST=127.0.0.1 DPT=5300`. Since v1.4.2 `unwallctl` also
+> adds a targeted allow rule for the redirect destination (visible with the
+> `# unwall dns redirect` comment) and removes it when gateway mode is
+> turned off. `doctor` warns under "ağ geçidi DNS" if the rule is in place
+> but the allowance is missing.
 
 ## Differences from the Windows version
 

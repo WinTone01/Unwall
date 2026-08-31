@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.4.1"
+VERSION = "1.4.2"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -120,6 +120,8 @@ TR = {
     'Checks the encrypted channel and interference': 'Şifreli kanal ve müdahale kontrolü',
     'Conflicting DPI tool running: {}': 'Çakışan DPI aracı çalışıyor: {}',
     'DNS check': 'DNS kontrolü',
+    'DNS redirect: {}': 'DNS yönlendirme: {}',
+    'device DNS not redirected': 'cihaz DNS\'i yönlendirilmiyor',
     'DNS is being tampered with - use DoH/DoT': 'DNS müdahalesi var — DoH/DoT kullanın',
     'DNS is encrypted and clean': 'DNS şifreli ve temiz',
     'DNS looks clean': 'DNS temiz görünüyor',
@@ -1212,8 +1214,18 @@ class Window(Adw.ApplicationWindow):
                 T("configured but not active · {}").format(d.get("backend", "?")))
 
         if self.config.get("GATEWAY_MODE") == "1":
+            # Ağ geçidi çalışsa bile LAN cihazının DNS'i bize
+            # yönlendirilmiyorsa cihaz kendi düz metin DNS'ini kullanır ve
+            # port 53'e müdahale eden ağlarda (Türk Telekom, TT Mobil)
+            # engelli siteler yine açılmaz - bu yüzden durumu ayrıca
+            # gösteriyoruz.
+            redirect = gwd.get("dns_redirect") or ""
             self.info_rows["gateway"].set_subtitle(
-                T("on · {}").format(self._gw_ip or "?"))
+                T("on · {}").format(self._gw_ip or "?")
+                + " · "
+                + (T("DNS redirect: {}").format(redirect) if redirect
+                   else T("device DNS not redirected"))
+            )
         else:
             self.info_rows["gateway"].set_subtitle(T("off"))
 

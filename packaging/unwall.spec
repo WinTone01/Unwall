@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.4.1
+Version:        1.4.2
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,12 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Tue Sep 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.4.2-1
+- Fix gateway mode never redirecting LAN devices' DNS: the rule matched "iifname != WAN", which never holds on a single-NIC machine where the console sits on the same network, so console queries went straight to the ISP on port 53 - fatal on Türk Telekom / TT Mobil, which answer every port 53 packet themselves. Queries are now matched by (private) source address instead.
+- Fix the redirect target: it pointed at whatever /etc/resolv.conf said, usually systemd-resolved's 127.0.0.53 stub, which only answers queries from local addresses and silently drops DNAT'ed LAN packets. The target is now dnscrypt-proxy's 127.0.0.1:5300 when DoH is on, or a dedicated DNSStubListenerExtra listener on the LAN address otherwise; when neither can be set up, no redirect rule is installed instead of black-holing DNS.
+- Fix the redirected DNS query then being dropped by the firewall: after DNAT its destination is the local machine, so it goes through INPUT, not forward - outside the scope of the "ufw route allow" rule added in 1.3.14 - and ufw's default deny-incoming killed it ("[UFW BLOCK] ... DST=127.0.0.1 DPT=5300"). A targeted allow rule for the redirect destination is now added with the rules and removed with them.
+- Fix the queue-conflict check in "doctor" never matching: modern nft prints "queue flags bypass to 210" while the check looked for "num 210", so neither our own rule nor a foreign table using the same queue was ever detected.
+- "unwallctl gateway-info" reports the redirect target (dns_redirect=), the Status page shows it under Gateway mode, and "unwallctl doctor" gained an "ağ geçidi DNS" row.
 * Sun Aug 02 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.4.1-1
 - Status page now shows the carrier without pressing a button (detected in the background on first run, then remembered per network), plus encrypted DNS and gateway mode state at a glance.
 * Sun Aug 02 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.4.0-1

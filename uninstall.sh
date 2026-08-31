@@ -16,6 +16,8 @@ ETCDIR="/etc/unwall"
 OPTDIR="/opt/unwall"
 LOGDIR="/var/log/unwall"
 RESOLVED_DROPIN="/etc/systemd/resolved.conf.d/90-unwall.conf"
+# Ağ geçidi modunda LAN'a açtığımız ikinci stub dinleyicisi
+RESOLVED_STUB_DROPIN="/etc/systemd/resolved.conf.d/91-unwall-gateway.conf"
 DNSCRYPT_CONF="/etc/dnscrypt-proxy/dnscrypt-proxy.toml"
 DNSCRYPT_BAK="/etc/dnscrypt-proxy/dnscrypt-proxy.toml.unwall.bak"
 
@@ -100,6 +102,10 @@ step "şifreli DNS ayarları geri alınıyor"
 if [ -f "$RESOLVED_DROPIN" ]; then
 	rm -f "$RESOLVED_DROPIN"
 	note "silindi: $RESOLVED_DROPIN"
+fi
+if [ -f "$RESOLVED_STUB_DROPIN" ]; then
+	rm -f "$RESOLVED_STUB_DROPIN"
+	note "silindi: $RESOLVED_STUB_DROPIN"
 fi
 rmdir /etc/systemd/resolved.conf.d 2>/dev/null || true
 

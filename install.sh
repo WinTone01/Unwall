@@ -229,6 +229,12 @@ fi
 
 step "dosyalar kopyalanıyor"
 install -d "$BINDIR" "$LIBDIR" "$ETCDIR" "$OPTDIR" "$LOGDIR"
+# Ağ geçidi modunda unwall.service, systemd-resolved'e LAN adresinde
+# ikinci bir stub dinleyicisi açtırmak için buraya bir drop-in yazıyor
+# (bkz. ensure_resolved_lan_stub() in bin/unwallctl). Servis
+# ProtectSystem=strict altında çalıştığından dizinin ÖNCEDEN var olması
+# gerekiyor: ReadWritePaths olmayan bir yolu sessizce atlar.
+install -d /etc/systemd/resolved.conf.d
 
 # unwallctl'i doğrudan $CTL üzerine yazmıyoruz: `unwallctl self-update` bu
 # betiği tam olarak $CTL'den (hâlâ çalışan bir bash sürecinden) çağırıyor.

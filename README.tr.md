@@ -277,11 +277,34 @@ yoktur; yönlendirme çekirdek tarafından yapılır.
 
 DNS de Windows sürümündeki `go-pcap2socks`'un yaptığı işi görür, sadece gömülü
 bir proxy yerine bir nftables kuralıyla: LAN'dan gelen her DNS sorgusu (TCP ve
-UDP, port 53) bu makinenin **kendi kullandığı çözümleyiciye** (şifreli DNS
-açıksa ona dahil) şeffafça yönlendirilir. **Cihazın DNS alanına ne yazdığınızın
-önemi yoktur** — ISS'niz port 53'ü engelliyorsa zaten bu özellik tam da bunun
-için var: cihazın paketleri o adrese hiç gerçekten çıkmaz, çıkmadan önce bu
-makineye yeniden yazılır.
+UDP, port 53) bu makinedeki çözümleyiciye şeffafça yönlendirilir (`dnat`).
+**Cihazın DNS alanına ne yazdığınızın önemi yoktur** — cihazın paketleri o
+adrese hiç gerçekten çıkmaz, çıkmadan önce bu makineye yeniden yazılır.
+
+Bu, Türk Telekom / TT Mobil gibi **port 53'e giden her paketi ele geçirip kendi
+yanıtını döndüren** ağlarda tek çözümdür: konsolun kendi DNS'i ISS'ye çıktığı
+sürece engelli sitelerin gerçek IP'sini asla öğrenemez, DPI atlatma çalışsa bile
+bağlantı yanlış adrese kurulur. Superonline/Turkcell gibi 53'e dokunmayan
+ağlarda ise cihaz kendi DNS'iyle de idare edebilir.
+
+Yönlendirmenin hedefi otomatik seçilir:
+
+- **Şifreli DNS (DoH/dnscrypt-proxy) açıksa** sorgular doğrudan
+  `127.0.0.1:5300`'e, yani şifreli kanala gider. Konsol/TV için önerilen kurulum
+  budur: `unwallctl dns enable cloudflare dnscrypt` (ya da arayüzden Şifreli DNS
+  + Yöntem: DoH).
+- **Şifreli DNS kapalıysa ya da DoT (systemd-resolved) kullanılıyorsa**
+  `systemd-resolved`'in LAN adresinde ikinci bir dinleyicisi açılır
+  (`DNSStubListenerExtra`, `/etc/systemd/resolved.conf.d/91-unwall-gateway.conf`)
+  ve sorgular oraya yönlendirilir. resolved'in asıl `127.0.0.53` stub'ı yalnızca
+  yerel adreslerden gelen sorgulara yanıt verdiği için LAN'dan gelen paketleri
+  sessizce atar; bu yüzden doğrudan oraya yönlendirmek işe yaramaz. Ağ geçidi
+  modu kapatılınca bu dinleyici geri alınır.
+- **Kullanılabilir bir hedef yoksa** yönlendirme kuralı hiç yazılmaz: DNS'i kara
+  deliğe göndermektense cihazın kendi ayarıyla çalışması yeğdir. Bu durumda
+  arayüzün Durum sayfasındaki "Ağ geçidi modu" satırında *cihaz DNS'i
+  yönlendirilmiyor* yazar, `unwallctl doctor` da "ağ geçidi DNS" satırında SORUN
+  gösterir.
 
 Cihazın (PlayStation, Xbox, Switch, TV) manuel ağ ayarlarına:
 
@@ -302,6 +325,17 @@ Cihazın (PlayStation, Xbox, Switch, TV) manuel ağ ayarlarına:
 > --add-forward`) otomatik ekliyor — elle güvenlik duvarı ayarı gerekmez.
 > Ne tespit edildiğini `unwallctl doctor` ya da arayüzün Teşhis
 > menüsünden "ağ geçidi yönlendirme" satırında görebilirsiniz.
+
+> [!NOTE]
+> DNS yönlendirmesi için ufw'de ikinci bir kural daha gerekiyor:
+> yönlendirilen paketin hedefi artık bu makinenin kendisi olduğu için paket
+> `forward` zincirinden değil `INPUT`'tan geçer ve `ufw route allow`
+> kuralının kapsamına girmez - ufw'nin varsayılan gelen politikası DROP
+> olduğundan sorgu `[UFW BLOCK] ... DST=127.0.0.1 DPT=5300` ile düşer.
+> v1.4.2'den beri `unwallctl` yönlendirme hedefine gelen bağlantı için de
+> nokta atışı bir izin ekliyor (`# unwall dns redirect` yorumuyla
+> görünür) ve ağ geçidi kapatılınca geri alıyor. `doctor`, kural yerinde
+> ama izin yoksa "ağ geçidi DNS" satırında uyarır.
 
 ## Windows sürümünden farklar
 

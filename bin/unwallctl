@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.4.1"
+VERSION="1.4.2"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -269,6 +269,141 @@ detect_local_resolver() {
 	awk '/^nameserver[[:space:]]/ {print $2; exit}' /etc/resolv.conf 2>/dev/null
 }
 
+# =====================================================================
+# Ağ geçidi modunda LAN'ın DNS'i
+#
+# Konsol/TV gibi cihazlarda DNS alanı boş bırakılamaz ve girilen değer
+# düz metin 53/udp'ye gider. Türk Telekom / TT Mobil gibi ağlarda port
+# 53'e giden HER paket ISS tarafından yakalanıp kendi (zehirli) yanıtıyla
+# cevaplandığı için, cihazın kendi DNS ayarıyla engelli sitelerin gerçek
+# IP'sine ulaşması mümkün değil: DPI atlatma çalışsa bile bağlantı yanlış
+# IP'ye kurulur. Bu yüzden ağ geçidi modunda LAN'dan gelen bütün 53
+# trafiğini bu makinedeki şifreli çözümleyiciye (DoH/DoT) DNAT ediyoruz.
+#
+# Hedef seçimi, "resolv.conf'ta ne yazıyorsa oraya" kadar basit değil:
+#   * systemd-resolved'in ana stub'ı (127.0.0.53) sorguyu yalnızca YEREL
+#     bir adresten geliyorsa yanıtlar (manager_packet_from_local_address);
+#     LAN'dan DNAT edilen paketi sessizce atar. Bunun için LAN adresinde
+#     ayrı bir stub (DNSStubListenerExtra) açtırıyoruz.
+#   * dnscrypt-proxy'nin 127.0.0.1:5300 dinleyicisinde böyle bir kısıt
+#     yok; DoH açıkken doğrudan oraya yönlendirmek yeterli (ve resolved'i
+#     hiç kurcalamamış oluyoruz).
+# =====================================================================
+
+# Yalnızca yerel ağdan gelen sorguları yönlendiririz (RFC1918 + CGNAT +
+# link-local). WAN doğrudan internete bakan bir arayüzse bu, makineyi
+# açık DNS çözümleyicisine çevirmemizi engeller.
+DNS_REDIRECT_NETS="10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16"
+
+# nft_ruleset bu değişkenden okur; cmd_nft_apply gerekli hazırlığı
+# (gateway_dns_prepare) yaptıktan sonra doldurur.
+DNS_REDIRECT_TARGET=""
+
+RESOLVED_STUB_DROPIN="/etc/systemd/resolved.conf.d/91-unwall-gateway.conf"
+
+# Bu makinenin LAN'daki adresi (istemcilerin ağ geçidi olarak girdiği IP).
+gateway_lan_ip() {
+	cmd_gateway_info | sed -n 's/^lan_ip=//p'
+}
+
+# Şifreli DNS arka ucu dnscrypt-proxy mi ve çalışıyor mu?
+dnscrypt_is_active() {
+	[ -f "$RESOLVED_DROPIN" ] || return 1
+	grep -q "127.0.0.1:$DNSCRYPT_PORT" "$RESOLVED_DROPIN" || return 1
+	systemctl is-active --quiet dnscrypt-proxy 2>/dev/null
+}
+
+# systemd-resolved'e LAN adresinde ikinci bir stub dinleyicisi açtırır.
+# DNSStubListenerExtra ile açılan dinleyici, ana stub'ın aksine yerel
+# olmayan kaynaklara da yanıt verir - yani tam olarak bu iş için var.
+ensure_resolved_lan_stub() {
+	local ip="$1" want i
+	[ -n "$ip" ] || return 1
+	systemctl is-active --quiet systemd-resolved 2>/dev/null || return 1
+
+	want="$(printf '# unwall tarafından oluşturuldu - elle düzenlemeyin\n[Resolve]\nDNSStubListenerExtra=%s\n' "$ip")"
+	if [ -f "$RESOLVED_STUB_DROPIN" ] &&
+		[ "$(cat "$RESOLVED_STUB_DROPIN" 2>/dev/null)" = "$want" ] &&
+		dns_port_reachable "$ip" 53; then
+		return 0
+	fi
+
+	mkdir -p "$(dirname "$RESOLVED_STUB_DROPIN")" 2>/dev/null || return 1
+	printf '%s\n' "$want" > "$RESOLVED_STUB_DROPIN" 2>/dev/null || return 1
+	systemctl restart systemd-resolved 2>/dev/null || return 1
+	# resolved'in yeni soketi açması bir an sürebilir.
+	for i in 1 2 3 4 5 6; do
+		dns_port_reachable "$ip" 53 && return 0
+		sleep 0.5
+	done
+	return 1
+}
+
+remove_resolved_lan_stub() {
+	[ -f "$RESOLVED_STUB_DROPIN" ] || return 0
+	rm -f "$RESOLVED_STUB_DROPIN"
+	systemctl restart systemd-resolved 2>/dev/null || true
+}
+
+# dns_gateway_target [LAN_IP]
+# LAN'dan gelen 53 trafiğinin DNAT edileceği "IP PORT". Yan etkisi yoktur
+# (yalnızca okur/dener); hazırlık gerekiyorsa gateway_dns_prepare yapar.
+# Boş dönerse yönlendirme kurulmaz - DNS'i kara deliğe göndermektense
+# cihazın kendi (zehirli de olsa) DNS'ini kullanması yeğdir.
+# LAN adresi zaten elde varsa argüman olarak verilmeli: cmd_gateway_info
+# bunu bize verir, biz de onu tekrar çağırmayız (yoksa sonsuz özyineleme).
+dns_gateway_target() {
+	local lan_ip="${1:-}"
+	if dnscrypt_is_active; then
+		printf '127.0.0.1 %s' "$DNSCRYPT_PORT"
+		return 0
+	fi
+	local resolver; resolver="$(detect_local_resolver)"
+	case "$resolver" in
+	"")
+		return 0 ;;
+	127.0.0.53|127.0.0.54)
+		[ -n "$lan_ip" ] || lan_ip="$(gateway_lan_ip)"
+		[ -n "$lan_ip" ] || return 0
+		dns_port_reachable "$lan_ip" 53 || return 0
+		printf '%s 53' "$lan_ip" ;;
+	*)
+		printf '%s 53' "$resolver" ;;
+	esac
+}
+
+# Ağ geçidi modunda kurallar yazılmadan ÖNCE çalışır: gerekiyorsa LAN
+# stub'ını açtırır, hedefi belirler ve loopback'e DNAT için çekirdeği
+# hazırlar.
+gateway_dns_prepare() {
+	local info lan_ip lan_iface
+	info="$(cmd_gateway_info)"
+	lan_ip="$(printf '%s\n' "$info" | sed -n 's/^lan_ip=//p')"
+	lan_iface="$(printf '%s\n' "$info" | sed -n 's/^lan=//p' | awk '{print $1}')"
+
+	if ! dnscrypt_is_active; then
+		case "$(detect_local_resolver)" in
+		127.0.0.53|127.0.0.54)
+			ensure_resolved_lan_stub "$lan_ip" ||
+				warn "systemd-resolved LAN dinleyicisi açılamadı; LAN cihazlarının DNS'i yönlendirilmeyecek (DoH için: unwallctl dns enable <sağlayıcı> dnscrypt)"
+			;;
+		esac
+	fi
+	DNS_REDIRECT_TARGET="$(dns_gateway_target "$lan_ip")"
+	[ -n "$DNS_REDIRECT_TARGET" ] || { revert_dns_input_allowed; return 0; }
+
+	case "$DNS_REDIRECT_TARGET" in
+	127.*)
+		# Dışarıdan (LAN'dan) gelen bir paketi loopback adresine DNAT
+		# etmek çekirdek için varsayılan olarak "martian"dır; bu açılmazsa
+		# paket sessizce düşer.
+		sysctl -qw net.ipv4.conf.all.route_localnet=1
+		;;
+	esac
+	ensure_dns_input_allowed "$lan_iface" \
+		"${DNS_REDIRECT_TARGET% *}" "${DNS_REDIRECT_TARGET##* }"
+}
+
 nft_ruleset() {
 	# Kuyruk kuralları postrouting'e yazılır: hem yerel çıkış (output) hem de
 	# ağ geçidi modundaki yönlendirilen (forward) trafiği tek yerde yakalar.
@@ -330,17 +465,26 @@ nft_ruleset() {
 		printf '\t}\n'
 
 		# LAN'daki cihazların (konsol, TV) DNS sorgularını, ne yazdıklarına
-		# bakmaksızın bu makinenin kendi çözümleyicisine yönlendirir.
-		# Bunu olmadan cihaz kendi ayarındaki DNS'e (genelde ISS'ninkine)
-		# gider; ISS port 53'ü engelliyorsa ya da DNS'i zehirliyorsa
-		# şifreli DNS burada devre dışı kalmış olur (bkz. Windows
-		# sürümündeki go-pcap2socks'un yaptığı iş).
-		local resolver; resolver="$(detect_local_resolver)"
-		if [ -n "$resolver" ]; then
+		# bakmaksızın bu makinenin şifreli çözümleyicisine yönlendirir
+		# (bkz. yukarıdaki "Ağ geçidi modunda LAN'ın DNS'i" bölümü).
+		#
+		# Eşleşme arayüze göre DEĞİL kaynak adrese göre: tipik kurulumda
+		# PC'nin tek NIC'i vardır, konsol da aynı ağdadır ve paketleri tam
+		# da WAN arayüzünden girer. Eski "iifname != WAN" şartı bu
+		# senaryoda hiçbir zaman tutmuyor, yönlendirme sessizce hiç
+		# çalışmıyordu (LAN ve WAN ayrı arayüz olan kurulumlarda kaynak
+		# adres eşlemesi de aynı işi görür).
+		#
+		# ip saddr yalnızca IPv4'ü kapsar; ENABLE_IPV6=1 olsa bile hedef
+		# çözümleyici IPv4 olduğu için IPv6 DNS'i yönlendirmiyoruz.
+		local target; target="$DNS_REDIRECT_TARGET"
+		[ -n "$target" ] || target="$(dns_gateway_target)"
+		if [ -n "$target" ]; then
+			local tip="${target% *}" tport="${target##* }"
 			printf '\tchain dns_redirect {\n'
 			printf '\t\ttype nat hook prerouting priority dstnat; policy accept;\n'
-			printf '\t\tiifname != "%s" udp dport 53 dnat to %s:53\n' "$wan" "$resolver"
-			printf '\t\tiifname != "%s" tcp dport 53 dnat to %s:53\n' "$wan" "$resolver"
+			printf '\t\tip saddr { %s } udp dport 53 dnat to %s:%s\n' "$DNS_REDIRECT_NETS" "$tip" "$tport"
+			printf '\t\tip saddr { %s } tcp dport 53 dnat to %s:%s\n' "$DNS_REDIRECT_NETS" "$tip" "$tport"
 			printf '\t}\n'
 		fi
 	fi
@@ -381,6 +525,71 @@ ensure_forward_allowed() {
 	fi
 }
 
+# DNAT'lanmış DNS paketi FORWARD'dan değil INPUT'tan geçer - hedefi artık
+# bu makinenin kendisidir (127.0.0.1:5300 ya da <lan_ip>:53). Yukarıdaki
+# "ufw route allow" yalnızca forward zincirini kapsadığı için sorgu
+# ufw'nin varsayılan gelen politikasına takılıp "[UFW BLOCK] ... DST=
+# 127.0.0.1 DPT=5300" ile düşüyor; kullanıcı tarafında bu, ağ geçidi
+# modunun çalıştığı ama konsolun hiçbir siteyi çözemediği anlamına gelir.
+# Kuralı hedefe (arayüz + adres + port) nokta atışı yazıyoruz.
+UFW_DNS_COMMENT='unwall dns redirect'
+
+# Neyi açtığımızı hatırlıyoruz: geri alırken (ağ geçidi kapandığında)
+# yalnızca kendi eklediğimiz izni kaldıralım.
+DNS_INPUT_STATE="$UW_ETC/.dns-input"
+
+ensure_dns_input_allowed() {
+	local iface="$1" tip="$2" tport="$3" proto out scope=()
+	# Hedef değişmiş olabilir (DoH açıldı, LAN adresi değişti...); önce
+	# kendi eski kuralımızı temizleyip güncelini yazıyoruz.
+	revert_dns_input_allowed
+
+	# Hedef loopback ise kuralı arayüze bağlamıyoruz: o adrese dışarıdan
+	# paket ancak bizim DNAT'ımızla ulaşabilir (dnscrypt-proxy yalnızca
+	# 127.0.0.1'i dinliyor) ve DNAT zaten kaynağı yerel ağ aralıklarıyla
+	# sınırlıyor. Hedef LAN adresiyse (resolved stub'ı) gerçekten
+	# dinlenen bir adres söz konusu; orada arayüz şartını koruyoruz.
+	case "$tip" in
+	127.*) scope=() ;;
+	*)     [ -n "$iface" ] || return 0; scope=(in on "$iface") ;;
+	esac
+
+	if command -v ufw >/dev/null 2>&1 &&
+		ufw status 2>/dev/null | grep -q '^Status: active'; then
+		for proto in udp tcp; do
+			if ! out="$(ufw allow ${scope[@]+"${scope[@]}"} to "$tip" port "$tport" proto "$proto" comment "$UFW_DNS_COMMENT" 2>&1)"; then
+				warn "ufw: DNS yönlendirme izni eklenemedi ($proto), LAN cihazları DNS yanıtı alamayabilir: $out"
+			fi
+		done
+		info "ufw: LAN DNS sorguları için $tip:$tport izni eklendi"
+	fi
+	if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+		for proto in udp tcp; do
+			firewall-cmd --add-port="$tport/$proto" >/dev/null 2>&1 || true
+		done
+	fi
+	printf '%s\n' "$tport" > "$DNS_INPUT_STATE" 2>/dev/null || true
+}
+
+revert_dns_input_allowed() {
+	local n tport=""
+	[ -f "$DNS_INPUT_STATE" ] && tport="$(cat "$DNS_INPUT_STATE" 2>/dev/null)"
+	if command -v ufw >/dev/null 2>&1 && ufw status >/dev/null 2>&1; then
+		# Numaralar silindikçe kaydığı için büyükten küçüğe siliyoruz.
+		for n in $(ufw status numbered 2>/dev/null |
+			awk -F'[][]' -v c="$UFW_DNS_COMMENT" '$0 ~ c {gsub(/ /,"",$2); print $2}' |
+			sort -rn); do
+			ufw --force delete "$n" >/dev/null 2>&1 || true
+		done
+	fi
+	if [ -n "$tport" ] && command -v firewall-cmd >/dev/null 2>&1 &&
+		firewall-cmd --state >/dev/null 2>&1; then
+		firewall-cmd --remove-port="$tport/udp" >/dev/null 2>&1 || true
+		firewall-cmd --remove-port="$tport/tcp" >/dev/null 2>&1 || true
+	fi
+	rm -f "$DNS_INPUT_STATE" 2>/dev/null || true
+}
+
 # Ağ geçidi modu kapatıldığında ekleneni geri alır.
 revert_forward_allowed() {
 	local wan="$1"
@@ -399,15 +608,6 @@ cmd_nft_apply() {
 	modprobe nfnetlink_queue 2>/dev/null || true
 	modprobe nft_queue 2>/dev/null || true
 	cmd_nft_flush
-	nft_ruleset | nft -f - || die "$(t 'could not apply the nftables rules')"
-	if [ "$HOSTLIST_MODE" = "auto" ]; then
-		# Bazı DPI'lar (ör. bazı Türk ISS'leri) yanlış ACK numaralı sahte RST
-		# gönderir; conntrack bunu varsayılan olarak INVALID sayıp connbytes
-		# eşleşmesinden düşürür, hostlist-auto de bu RST'yi hiç göremez.
-		# zapret2'nin kendi common/linux_fw.sh'ı da autohostlist modunda
-		# aynı sebeple bunu açar.
-		sysctl -qw net.netfilter.nf_conntrack_tcp_be_liberal=1 2>/dev/null || true
-	fi
 	local gw_wan="${WAN_IFACE:-$(detect_wan)}"
 	if [ "$GATEWAY_MODE" = "1" ]; then
 		sysctl -qw net.ipv4.ip_forward=1
@@ -417,20 +617,29 @@ cmd_nft_apply() {
 		if [ "$ENABLE_IPV6" = "1" ]; then
 			sysctl -qw net.ipv6.conf.all.forwarding=1
 		fi
-		# DNS yönlendirmesi (bkz. nft_ruleset) hedefi 127.0.0.53 gibi bir
-		# loopback adresiyse, çekirdek varsayılan olarak dışarıdan (LAN'dan)
-		# gelen paketleri loopback'e DNAT etmeyi "martian" sayıp düşürür.
-		# route_localnet bunu açar; başka bir aracın da devre dışı
-		# bırakmasını önlemek için LAN arayüzünde de ayarlıyoruz.
-		local resolver; resolver="$(detect_local_resolver)"
-		case "$resolver" in
-		127.*)
-			sysctl -qw net.ipv4.conf.all.route_localnet=1
-			;;
-		esac
-		[ -n "$gw_wan" ] && ensure_forward_allowed "$gw_wan"
-	elif [ -n "$gw_wan" ]; then
-		revert_forward_allowed "$gw_wan"
+		# LAN'ın DNS'ini yönlendirmenin hazırlığı (dinleyici + çekirdek
+		# ayarı) kurallardan ÖNCE yapılmalı: hedef hazır değilse
+		# nft_ruleset yönlendirme zincirini hiç yazmaz.
+		gateway_dns_prepare
+	fi
+	nft_ruleset | nft -f - || die "$(t 'could not apply the nftables rules')"
+	if [ "$HOSTLIST_MODE" = "auto" ]; then
+		# Bazı DPI'lar (ör. bazı Türk ISS'leri) yanlış ACK numaralı sahte RST
+		# gönderir; conntrack bunu varsayılan olarak INVALID sayıp connbytes
+		# eşleşmesinden düşürür, hostlist-auto de bu RST'yi hiç göremez.
+		# zapret2'nin kendi common/linux_fw.sh'ı da autohostlist modunda
+		# aynı sebeple bunu açar.
+		sysctl -qw net.netfilter.nf_conntrack_tcp_be_liberal=1 2>/dev/null || true
+	fi
+	if [ "$GATEWAY_MODE" = "1" ]; then
+		if [ -n "$gw_wan" ]; then ensure_forward_allowed "$gw_wan"; fi
+	else
+		if [ -n "$gw_wan" ]; then revert_forward_allowed "$gw_wan"; fi
+		# Ağ geçidi kapatıldığında LAN'a açtığımız DNS dinleyicisini ve
+		# güvenlik duvarı iznini de geri alalım: kapalıyken makinenin
+		# DNS'i LAN'a açık kalmasın.
+		revert_dns_input_allowed
+		remove_resolved_lan_stub
 	fi
 	return 0
 }
@@ -576,8 +785,10 @@ cmd_enable() {
 	conflict_guard
 	systemctl enable --now "$UNIT"
 }
-cmd_stop()    { need_root; systemctl stop "$UNIT"; cmd_nft_flush; }
-cmd_disable() { need_root; systemctl disable --now "$UNIT" 2>/dev/null || true; cmd_nft_flush; }
+# Durdururken ağ geçidi için açtığımız LAN DNS dinleyicisini de kapatıyoruz:
+# yönlendirme kuralları gittikten sonra makinenin 53'ü LAN'a açık kalmasın.
+cmd_stop()    { need_root; systemctl stop "$UNIT"; cmd_nft_flush; revert_dns_input_allowed; remove_resolved_lan_stub; }
+cmd_disable() { need_root; systemctl disable --now "$UNIT" 2>/dev/null || true; cmd_nft_flush; revert_dns_input_allowed; remove_resolved_lan_stub; }
 
 # Blockcheck kendi geçici nfqws süreçlerini rastgele bir kuyruk numarasıyla
 # başlatır; bunlar çakışma sayılmamalı. Sürecin ata zincirinde blockcheck
@@ -847,7 +1058,24 @@ dns_enable() {
 	systemctl restart systemd-resolved
 	resolvectl flush-caches 2>/dev/null || true
 	info "$(t 'encrypted DNS is on') ($backend, $provider)"
+	gateway_dns_reapply
 	dns_test
+}
+
+# Şifreli DNS açılıp kapandığında ağ geçidi yönlendirmesinin hedefi de
+# değişir (ör. artık dnscrypt-proxy var, LAN stub'ına gerek yok). Kurallar
+# yalnızca nft-apply sırasında üretildiği için, ağ geçidi modu açıkken
+# yeniden uygulamazsak yönlendirme eski hedefte kalır ya da hiç kurulmamış
+# olarak kalır - kullanıcı için "DoH'u açtım ama konsol hâlâ engelli"
+# demek.
+gateway_dns_reapply() {
+	load_config
+	[ "$GATEWAY_MODE" = "1" ] || return 0
+	nft list table ip "$NFT_TABLE" >/dev/null 2>&1 ||
+		nft list table inet "$NFT_TABLE" >/dev/null 2>&1 ||
+		return 0
+	info "ağ geçidi DNS yönlendirmesi yeniden uygulanıyor"
+	cmd_nft_apply
 }
 
 dnscrypt_write_config() {
@@ -936,6 +1164,7 @@ dns_disable() {
 		info "$(t 'restoring the previous dnscrypt-proxy configuration')"
 		mv -f "$DNSCRYPT_BAK" "$DNSCRYPT_CONF"
 	fi
+	gateway_dns_reapply
 	info "$(t 'encrypted DNS turned off, back to system defaults')"
 }
 
@@ -1205,7 +1434,21 @@ cmd_doctor() {
 
 	# aynı kuyruk numarasını kullanan başka kural var mı
 	local ruleset; ruleset="$(nft -a list ruleset 2>/dev/null || true)"
-	if case "$ruleset" in *"queue"*"num $QNUM"*) true ;; *) false ;; esac; then
+	# Kurallarımız şu an yüklü mü? (Kurulum sırasında ya da servis
+	# dururken değildir; o durumda "eksik" diye şikâyet etmek yanlış alarm.)
+	local nft_live=0
+	if nft list table ip "$NFT_TABLE" >/dev/null 2>&1 ||
+		nft list table inet "$NFT_TABLE" >/dev/null 2>&1; then
+		nft_live=1
+	fi
+	# nft, kuralı kendi normalleştirilmiş yazımıyla döker: modern sürümler
+	# "queue flags bypass to 210", eskiler "queue num 210 bypass". Yalnızca
+	# ikincisini arayınca bu kontrol hiçbir zaman çalışmıyordu - ne bizim
+	# kuralımızı ne de başka bir tablonun aynı kuyruğu kullandığını görüyordu.
+	if case "$ruleset" in
+		*"queue num $QNUM"*|*"queue flags bypass to $QNUM"*|*"queue to $QNUM"*) true ;;
+		*) false ;;
+		esac; then
 		if nft list table ip "$NFT_TABLE" >/dev/null 2>&1 || nft list table inet "$NFT_TABLE" >/dev/null 2>&1; then
 			check "kuyruk $QNUM" 0 "bize ait"
 		else
@@ -1245,6 +1488,29 @@ cmd_doctor() {
 			check "ağ geçidi yönlendirme" 0 "firewalld etkin; unwall --add-forward uyguluyor (eski sürümlerde işe yaramayabilir - sorun olursa elle 'sudo firewall-cmd --add-forward' deneyin)"
 		else
 			check "ağ geçidi yönlendirme" 0 "yönlendirmeyi engelleyen bir güvenlik duvarı bulunamadı"
+		fi
+	fi
+
+	# Ağ geçidi modunda konsol/TV'nin DNS'i bize yönlendirilmezse cihaz
+	# kendi düz metin DNS'ini kullanır; Türk Telekom gibi port 53'ü ele
+	# geçiren ağlarda bu, DPI atlatma çalışsa bile engelli sitelerin
+	# açılmaması demektir.
+	if [ "$GATEWAY_MODE" = "1" ]; then
+		local dns_t; dns_t="$(dns_gateway_target | tr ' ' ':')"
+		if [ -n "$dns_t" ]; then
+			# Yönlendirme kuralı tek başına yetmez: DNAT'lanmış paket
+			# INPUT'tan geçtiği için ufw'nin varsayılan DROP'una takılır.
+			# İzni ekliyoruz (ensure_dns_input_allowed) ama gerçekten
+			# yerinde mi, root ile bakabildiğimizde doğrulayalım.
+			if [ "$nft_live" = 1 ] && command -v ufw >/dev/null 2>&1 &&
+				ufw status 2>/dev/null | grep -q '^Status: active' &&
+				! ufw status 2>/dev/null | grep -q "$UFW_DNS_COMMENT"; then
+				check "ağ geçidi DNS" 1 "$dns_t hedefine yönlendiriliyor ama ufw izni yok; 'unwallctl restart'"
+			else
+				check "ağ geçidi DNS" 0 "LAN sorguları $dns_t adresine yönlendiriliyor"
+			fi
+		else
+			check "ağ geçidi DNS" 1 "LAN sorguları yönlendirilmiyor; 'unwallctl dns enable cloudflare dnscrypt' sonrası 'unwallctl restart'"
 		fi
 	fi
 
@@ -1489,8 +1755,15 @@ cmd_gateway_info() {
 	# değiştirmez ama router'ı değiştirir).
 	local router
 	router="$(ip -4 route show default 2>/dev/null | awk '/via/ {for(i=1;i<=NF;i++) if($i=="via") {print $(i+1); exit}}')"
-	printf 'wan_iface=%s\nwan_ip=%s\nlan=%s\nlan_ip=%s\nlan_mask=%s\nrouter=%s\nenabled=%s\n' \
-		"$wan" "$ip" "$lan" "$lan_ip" "$lan_mask" "${router:-}" "$GATEWAY_MODE"
+	# LAN cihazlarının DNS'i nereye yönlendiriliyor (boşsa: hiç
+	# yönlendirilmiyor, cihaz kendi DNS ayarını kullanıyor demektir).
+	local dns_redirect=""
+	if [ "$GATEWAY_MODE" = "1" ]; then
+		dns_redirect="$(dns_gateway_target "$lan_ip" | tr ' ' ':')"
+	fi
+	printf 'wan_iface=%s\nwan_ip=%s\nlan=%s\nlan_ip=%s\nlan_mask=%s\nrouter=%s\nenabled=%s\ndns_redirect=%s\n' \
+		"$wan" "$ip" "$lan" "$lan_ip" "$lan_mask" "${router:-}" "$GATEWAY_MODE" \
+		"$dns_redirect"
 }
 
 # =====================================================================

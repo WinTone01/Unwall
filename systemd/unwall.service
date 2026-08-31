@@ -31,6 +31,12 @@ ReadWritePaths=@ETCDIR@ @LOGDIR@
 ReadWritePaths=-/etc/ufw
 ReadWritePaths=-/var/lib/ufw
 ReadWritePaths=-/etc/firewalld
+# /etc/systemd/resolved.conf.d: ağ geçidi modunda systemd-resolved'e LAN
+# adresinde ikinci bir stub dinleyicisi açtırmak için (bkz.
+# ensure_resolved_lan_stub() in bin/unwallctl). Dizini install.sh
+# oluşturur; yoksa "-" öneki sayesinde servis yine de başlar ve
+# yönlendirme sessizce değil, uyarıyla devre dışı kalır.
+ReadWritePaths=-/etc/systemd/resolved.conf.d
 PrivateTmp=yes
 ProtectControlGroups=yes
 RestrictRealtime=yes

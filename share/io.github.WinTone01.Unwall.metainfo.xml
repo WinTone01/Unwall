@@ -59,6 +59,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.4.2" date="2026-09-01">
+      <description>
+        <p>Fixed gateway mode never actually redirecting the DNS queries of LAN devices (consoles, TVs): the rule only matched packets arriving on an interface other than the WAN one, which never happens on the usual single-NIC setup, and it pointed at systemd-resolved's 127.0.0.53 stub, which ignores queries coming from anywhere but the local machine. Queries are now matched by source address and sent to dnscrypt-proxy when DoH is on, or to a dedicated resolved listener on the LAN address otherwise.</p>
+        <p>Redirected queries were then dropped by ufw's default deny-incoming policy, since after redirection they are addressed to this machine and no longer covered by the forwarding rule; the matching allow rule is now added and removed along with gateway mode.</p>
+      </description>
+    </release>
     <release version="1.4.1" date="2026-08-02">
       <description>
         <p>The Status page now shows your carrier without pressing a button, and reports encrypted DNS and gateway mode state at a glance.</p>
