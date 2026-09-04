@@ -1,0 +1,12 @@
+[Unit]
+Description=Unwall - strateji hâlâ çalışıyor mu, ölç
+Documentation=https://github.com/WinTone01/Unwall
+After=network-online.target unwall.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# --auto: motor çalışmıyorsa ya da ölçecek alan adı yoksa sessizce çıkar.
+# WATCHDOG_ACTION=tune ise strateji bozulduğunda auto-tune'u çalıştırıp
+# en iyi adayı uygular (bu, motoru yeniden başlatabilir).
+ExecStart=@BINDIR@/unwallctl watchdog --auto

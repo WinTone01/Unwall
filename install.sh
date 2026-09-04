@@ -306,6 +306,22 @@ sed -e "s|@BINDIR@|$BINDIR|g" \
 install -m 0644 "$SRC/systemd/unwall-verify.timer" "$UNITDIR/unwall-verify.timer"
 chmod 0644 "$UNITDIR/unwall-verify.service"
 
+# Nöbetçi: stratejinin hâlâ çalışıp çalışmadığını ölçer. O da kapalı gelir.
+sed -e "s|@BINDIR@|$BINDIR|g" \
+	"$SRC/systemd/unwall-watchdog.service" > "$UNITDIR/unwall-watchdog.service"
+install -m 0644 "$SRC/systemd/unwall-watchdog.timer" "$UNITDIR/unwall-watchdog.timer"
+chmod 0644 "$UNITDIR/unwall-watchdog.service"
+
+# NetworkManager dispatcher: ağ değişince o ağın profilini uygula.
+# Dizin yoksa (NM kurulu değilse) atlanır.
+if [ -d /etc/NetworkManager/dispatcher.d ]; then
+	sed -e "s|@BINDIR@|$BINDIR|g" \
+		"$SRC/packaging/nm-dispatcher/90-unwall" \
+		> /etc/NetworkManager/dispatcher.d/90-unwall
+	chmod 0755 /etc/NetworkManager/dispatcher.d/90-unwall
+	note "ağ değişimi kancası kuruldu (NetworkManager dispatcher)"
+fi
+
 install -d "$POLKITDIR"
 sed -e "s|@BINDIR@|$BINDIR|g" \
 	"$SRC/polkit/io.github.WinTone01.Unwall.policy" > "$POLKITDIR/io.github.WinTone01.Unwall.policy"

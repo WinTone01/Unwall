@@ -4,6 +4,7 @@ set -e
 case "$1" in
 remove|deconfigure)
 	systemctl disable --now unwall-verify.timer >/dev/null 2>&1 || true
+	systemctl disable --now unwall-watchdog.timer >/dev/null 2>&1 || true
 	systemctl disable --now unwall.service >/dev/null 2>&1 || true
 	if [ -x /usr/bin/unwallctl ]; then
 		unwallctl nft-flush >/dev/null 2>&1 || true

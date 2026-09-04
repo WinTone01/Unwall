@@ -1,0 +1,11 @@
+#!/bin/sh
+# NetworkManager dispatcher: ağ değiştiğinde o ağ için kaydedilmiş Unwall
+# profilini uygular (bkz. "unwallctl profile"). Kayıtlı profil yoksa
+# hiçbir şey yapmaz - "profile apply --auto" sessizce çıkar.
+case "$2" in
+up|connectivity-change)
+	[ -x @BINDIR@/unwallctl ] || exit 0
+	@BINDIR@/unwallctl profile apply --auto >/dev/null 2>&1 || true
+	;;
+esac
+exit 0

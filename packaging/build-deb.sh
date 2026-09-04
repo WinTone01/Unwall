@@ -69,6 +69,13 @@ sed -e "s|@BINDIR@|/usr/bin|g" -e "s|@ETCDIR@|/etc/unwall|g" -e "s|@LOGDIR@|/var
 sed -e 's|@BINDIR@|/usr/bin|g' \
 	"$SRC/systemd/unwall-verify.service" > "$ROOT/usr/lib/systemd/system/unwall-verify.service"
 install -m 0644 "$SRC/systemd/unwall-verify.timer" "$ROOT/usr/lib/systemd/system/unwall-verify.timer"
+sed -e 's|@BINDIR@|/usr/bin|g' \
+	"$SRC/systemd/unwall-watchdog.service" > "$ROOT/usr/lib/systemd/system/unwall-watchdog.service"
+install -m 0644 "$SRC/systemd/unwall-watchdog.timer" "$ROOT/usr/lib/systemd/system/unwall-watchdog.timer"
+install -d "$ROOT/etc/NetworkManager/dispatcher.d"
+sed -e 's|@BINDIR@|/usr/bin|g' \
+	"$SRC/packaging/nm-dispatcher/90-unwall" > "$ROOT/etc/NetworkManager/dispatcher.d/90-unwall"
+chmod 0755 "$ROOT/etc/NetworkManager/dispatcher.d/90-unwall"
 
 sed "s|@BINDIR@|/usr/bin|g" "$SRC/polkit/io.github.WinTone01.Unwall.policy" \
 	> "$ROOT/usr/share/polkit-1/actions/io.github.WinTone01.Unwall.policy"

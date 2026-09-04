@@ -1,0 +1,12 @@
+[Unit]
+Description=Unwall - stratejinin sağlığını düzenli olarak ölç
+Documentation=https://github.com/WinTone01/Unwall
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

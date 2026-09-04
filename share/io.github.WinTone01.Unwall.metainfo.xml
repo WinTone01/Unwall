@@ -59,6 +59,13 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="2.0.0" date="2026-09-04">
+      <description>
+        <p>Unwall now measures instead of guessing. Auto-tune runs candidate strategies in a second engine on its own queue and scores them against sites that are actually blocked, without disturbing the connection you are using. A watchdog notices when a strategy stops working and can search for a new one on its own. Strategies are remembered per network, so home, a mobile hotspot and a school network each keep what works there.</p>
+        <p>A Wi-Fi hotspot mode lets a console or TV join a network broadcast by this machine instead of needing manual IP settings, and a new Health page collects the strategy check, the tuner, the network profile, the hotspot switch and the list counts in one place.</p>
+        <p>Measurement also learned to tell a block from everything else that can go wrong with a connection: a WebSocket endpoint answering HTTP 426, a live host with a mismatched certificate, or a name that simply no longer resolves are no longer mistaken for censorship, and "unwallctl prune" clears entries whose domain has gone away.</p>
+      </description>
+    </release>
     <release version="1.5.0" date="2026-09-04">
       <description>
         <p>Auto-learned domains are now verified by measurement instead of being trusted. The engine's block detection is a guess - a site that is briefly down or a telemetry endpoint that never answers looks exactly like a blocked one - and on one real machine 368 of 497 learned entries had never been blocked at all. New learnings now land in a quarantine list and are promoted only once Unwall has opened two connections to the domain, one with the bypass and one without, and seen the difference for itself.</p>

@@ -85,6 +85,7 @@ fi
 # --- 1. servis ve ağ kuralları ---
 step "servis durduruluyor"
 systemctl disable --now unwall-verify.timer >/dev/null 2>&1 || true
+systemctl disable --now unwall-watchdog.timer >/dev/null 2>&1 || true
 systemctl disable --now unwall.service >/dev/null 2>&1 || true
 systemctl reset-failed unwall.service >/dev/null 2>&1 || true
 
@@ -154,6 +155,9 @@ rm -f /etc/systemd/system/unwall.service
 rm -f /usr/lib/systemd/system/unwall.service
 rm -f /etc/systemd/system/unwall-verify.service /etc/systemd/system/unwall-verify.timer
 rm -f /usr/lib/systemd/system/unwall-verify.service /usr/lib/systemd/system/unwall-verify.timer
+rm -f /etc/systemd/system/unwall-watchdog.service /etc/systemd/system/unwall-watchdog.timer
+rm -f /usr/lib/systemd/system/unwall-watchdog.service /usr/lib/systemd/system/unwall-watchdog.timer
+rm -f /etc/NetworkManager/dispatcher.d/90-unwall
 rm -f /usr/share/polkit-1/actions/io.github.WinTone01.Unwall.policy
 rm -f /usr/share/applications/io.github.WinTone01.Unwall.desktop
 rm -f /usr/share/applications/unwall.desktop

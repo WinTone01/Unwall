@@ -204,7 +204,13 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `unwallctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
 | `unwallctl conncheck [domainler]` | birkaç hedefe gerçek TLS el sıkışması dener |
 | `sudo unwallctl verify [--all]` | öğrenilen alan adlarını ölçüp doğrular (yanlış pozitifleri siler) |
+| `sudo unwallctl prune` | listelerdeki geçersiz (çözülmeyen) alan adlarını ayıklar |
 | `sudo unwallctl verify-timer on\|off` | düzenli doğrulamayı aç / kapat |
+| `sudo unwallctl tune [--apply]` | aday stratejileri gerçek engelli sitelere karşı ölçer |
+| `sudo unwallctl watchdog` | strateji hâlâ çalışıyor mu, ölçer |
+| `unwallctl profile show\|save\|apply` | ağ başına strateji profili |
+| `sudo unwallctl hotspot on\|off` | konsol/TV için Wi-Fi ağı yayınlar |
+| `unwallctl report` | tek komutta tüm durum (arayüzün Sağlık sayfası bunu okur) |
 | `unwallctl blockcheck-results [motor]` | son blockcheck'teki tüm çalışan stratejileri listeler |
 | `unwallctl update-check` | GitHub'da yeni sürüm var mı bak (key=value) |
 | `sudo unwallctl self-update [sürüm]` | bir sürümü indirip kur (varsayılan: en son) |
@@ -243,7 +249,34 @@ v1.5'ten beri öğrenilen alan adları doğrudan kalıcı listeye yazılmıyor:
 | `false-positive` | atlatmasız da açılıyor | listeden silinir (karantinadan ikinci kez düşerse dışlama listesine yazılır) |
 | `blocked` | atlatmasız kapalı, atlatmayla açık | kalıcı listeye alınır |
 | `still-blocked` | iki türlü de kapalı, imza DPI müdahalesi gibi | listede kalır — **engel gerçek ama strateji yetmiyor** |
-| `unreachable` | iki türlü de açılmıyor, imza DPI'a benzemiyor | listeden silinir (ölü host) |
+| `not-dpi` | host canlı ama sorun sertifika/TLS yapılandırması | listeden silinir (desync bunu çözmez) |
+| `invalid` | alan adı hiç çözülmüyor | listeden silinir |
+| `unreachable` | ölü/erişilemez host (443'e TCP bile kurulamıyor) | listeden silinir |
+| `skipped-ip` | ham IP girdisi | dokunulmaz |
+
+Ayrım `curl`'ün çıkış koduna dayanıyor ve bu ayrımı doğru yapmak sanıldığından
+önemli: bir WebSocket ucu (`ws-eu.pusher.com`) **HTTP 426 döndürüp** akışı
+kapatır, sertifikası eşleşmeyen canlı bir host TLS hatası verir - ikisi de
+"engellendi" değildir. Ölçüm, sunucudan bir HTTP kodu geldiği anda başarılı
+sayılır; TLS kesmesi (`35/52/56`) DPI imzası, sertifika hataları
+(`51/58/59/60/...`) ise canlı host sayılır. Zaman aşımında 443'e çıplak bir TCP
+bağlantısı denenir: kuruluyorsa host canlıdır ve kesme el sıkışmadadır.
+
+### Geçersiz alan adlarını ayıklamak
+
+Liste zamanla çöp biriktirir: süresi dolmuş adlar, CDN'lerin ürettiği geçici
+konak adları, yazım hataları. Bunları DPI ölçümü yapmadan, sadece "bu ad var
+mı?" diye sorarak temizler:
+
+```bash
+sudo unwallctl prune
+```
+
+Soru ISS'nin DNS'ine değil, 443/TLS üzerinden Cloudflare DoH'a sorulur - düz
+DNS'e sorsaydık, DNS zehirlemesi olan bir ağda **bütün liste** "yok" görünüp
+silinirdi. DoH'a ulaşılamazsa hiçbir şey silinmez. Yalnızca motorun kendi
+öğrendiği listelere dokunur; elle yazdığınız `hostlist.txt` ve
+`excludelist.txt` sizindir.
 
 ```bash
 sudo unwallctl verify          # karantinadakileri doğrula
@@ -393,6 +426,100 @@ Cihazın (PlayStation, Xbox, Switch, TV) manuel ağ ayarlarına:
 > nokta atışı bir izin ekliyor (`# unwall dns redirect` yorumuyla
 > görünür) ve ağ geçidi kapatılınca geri alıyor. `doctor`, kural yerinde
 > ama izin yoksa "ağ geçidi DNS" satırında uyarır.
+
+## Kendi kendini ayarlama (v2.0)
+
+Bir stratejinin çalışıp çalışmadığı tahmin edilecek bir şey değil, ölçülecek
+bir şey. v2.0'daki dört özellik de aynı ölçüm altyapısını kullanıyor:
+ayrılmış `unwall-probe` kullanıcısının trafiği motorun fwmark'ıyla
+işaretleniyor, kuyruk kuralları işaretli paketleri almıyor, böylece "atlatma
+olmadan" bağlantı kurallara hiç dokunmadan denenebiliyor.
+
+### En iyi stratejiyi bulmak
+
+```bash
+sudo unwallctl tune            # ölç ve öner
+sudo unwallctl tune --apply    # ölç ve en iyisini uygula
+sudo unwallctl tune --deep     # daha geniş parametre araması
+```
+
+`blockcheck`ten farkı, **çalışan bağlantınıza hiç dokunmaması**: aday
+strateji ayrı bir kuyrukta (`QNUM+1`) ikinci bir motor örneğinde çalışır ve
+oraya yalnızca ölçüm kullanıcısının trafiği yönlendirilir. Siz bu sırada
+normal stratejiyle gezmeye devam edersiniz.
+
+Test kümesi de tahmin değil: doğrulanmış listenizden örneklem alınır ve
+**o an gerçekten engelli olan** alan adları seçilir. Adaylar hazır
+profiller + bir parametre ızgarasıdır (sahte paketin TTL'i ve bölme
+yöntemi); argümanlarına göre tekilleştirilir. Tam skor yapan bir aday
+bulununca arama durur. Mevcut strateji zaten hepsini geçiyorsa hiç aday
+denenmez.
+
+Izgaradan çıkan bir aday kazanırsa `STRATEGY=analiz` + `CUSTOM_ARGS` olarak
+kaydedilir.
+
+### Ağ başına profil
+
+Ev, mobil hotspot ve okul ağı farklı DPI'lardan geçer. Bir ağda çalışan
+stratejiyi kaydedin; o ağa döndüğünüzde kendiliğinden geri yüklenir.
+
+```bash
+unwallctl profile show     # bu ağın parmak izi ve kayıtlı profili
+sudo unwallctl profile save
+unwallctl profile list
+```
+
+Parmak izi olarak önce Wi-Fi SSID'si, yoksa varsayılan ağ geçidinin MAC
+adresi, o da yoksa router IP'si kullanılır. Ağ değiştiğinde NetworkManager
+dispatcher kancası (`/etc/NetworkManager/dispatcher.d/90-unwall`)
+`profile apply --auto` çağırır; o ağ için kayıt yoksa hiçbir şey yapmaz.
+
+### Nöbetçi
+
+Strateji bir sabah çalışmayı bırakabiliyor - ISS DPI'ını günceller ve bu
+kullanıcıya "internet bozuldu" diye görünür. Nöbetçi, engelli olduğu
+**ölçülmüş** birkaç alan adını aktif stratejiden geçirip hâlâ açılıyorlar mı
+diye bakar.
+
+```bash
+sudo unwallctl watchdog            # şimdi ölç
+sudo unwallctl watchdog-timer on   # yarım saatte bir ölç
+```
+
+Yarısından azı açılıyorsa strateji bozulmuş sayılır (tek bir başarısızlık
+sitenin kendi arızası da olabilir, bu yüzden oran). `WATCHDOG_ACTION=tune`
+ise auto-tune çalıştırılıp en iyi aday uygulanır; varsayılan `notify`, yani
+yalnızca haber verilir (arayüzün Sağlık sayfası ve `journalctl -u
+unwall-watchdog`).
+
+### Hotspot (AP modu)
+
+Kablosuz kartınız AP modunu destekliyorsa, konsolda elle statik IP/ağ geçidi
+girmeye hiç gerek yok: PC kendi Wi-Fi ağını yayınlar, cihaz ona bağlanır.
+
+```bash
+sudo unwallctl hotspot on            # SSID: Unwall, parola üretilir ve yazdırılır
+sudo unwallctl hotspot on EvAgi parolaniz
+sudo unwallctl hotspot status
+```
+
+DHCP ve DNS'i NetworkManager'ın "shared" modu (dnsmasq) hallediyor; Unwall
+yalnızca ağ geçidi kurallarını açıyor. Kartınız aynı anda hem bağlanıp hem
+yayın yapamıyorsa ve internete de aynı karttan çıkıyorsanız bağlantı
+kopabilir - komut bunu önceden uyarır.
+
+### Sağlık sayfası
+
+Arayüzdeki yeni **Sağlık** sekmesi bunların hepsini tek yerde gösterir: son
+nöbetçi denetimi, "Ölç ve uygula" düğmesi, bu ağın profili, hotspot anahtarı
+ve liste sayıları. Aynı veri terminalden `unwallctl report` ile alınabilir.
+
+> [!NOTE]
+> Ağ geçidi modunda cihazın IPv6'sı doğrudan router'dan gelir ve bu trafik
+> bu makineden geçmez - yani Unwall'ı atlar. IPv6 üzerinden erişilebilen bir
+> site engelliyse cihazda IPv6'yı kapatmak gerekir. Kendi makinenizin IPv6
+> trafiği için `ENABLE_IPV6=1` yeterlidir.
+
 
 ## Windows sürümünden farklar
 

@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.5.0"
+VERSION="2.0.0"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -49,6 +49,11 @@ ENABLE_IPV6="0"
 AUTO_FAIL_THRESHOLD="2"
 # Öğrenilen alan adları doğrulanmadan kalıcı listeye geçmesin (0/1).
 AUTO_VERIFY="1"
+# Nöbetçi strateji bozulduğunda ne yapsın: notify (yalnızca haber ver) ya
+# da tune (auto-tune çalıştırıp en iyi adayı uygula).
+WATCHDOG_ACTION="notify"
+# Ağ değiştiğinde o ağ için kaydedilmiş profili kendiliğinden uygula (0/1).
+PROFILE_AUTO="1"
 
 # Kaynak metinler İngilizce; Türkçe karşılıkları t() içinde.
 t() {
@@ -135,10 +140,10 @@ cmd_config() {
 			local k
 			for k in "$@"; do printf '%s\n' "${!k-}"; done
 		else
-			printf 'ENGINE=%s\nSTRATEGY=%s\nCUSTOM_ARGS=%s\nHOSTLIST_MODE=%s\nQNUM=%s\nPORTS_TCP=%s\nPORTS_UDP=%s\nGATEWAY_MODE=%s\nWAN_IFACE=%s\nENABLE_IPV6=%s\nAUTO_FAIL_THRESHOLD=%s\nAUTO_VERIFY=%s\n' \
+			printf 'ENGINE=%s\nSTRATEGY=%s\nCUSTOM_ARGS=%s\nHOSTLIST_MODE=%s\nQNUM=%s\nPORTS_TCP=%s\nPORTS_UDP=%s\nGATEWAY_MODE=%s\nWAN_IFACE=%s\nENABLE_IPV6=%s\nAUTO_FAIL_THRESHOLD=%s\nAUTO_VERIFY=%s\nWATCHDOG_ACTION=%s\nPROFILE_AUTO=%s\n' \
 				"$ENGINE" "$STRATEGY" "$CUSTOM_ARGS" "$HOSTLIST_MODE" "$QNUM" \
 				"$PORTS_TCP" "$PORTS_UDP" "$GATEWAY_MODE" "$WAN_IFACE" "$ENABLE_IPV6" \
-				"$AUTO_FAIL_THRESHOLD" "$AUTO_VERIFY"
+				"$AUTO_FAIL_THRESHOLD" "$AUTO_VERIFY" "$WATCHDOG_ACTION" "$PROFILE_AUTO"
 		fi
 		;;
 	set)
@@ -150,7 +155,7 @@ cmd_config() {
 			key="${pair%%=*}"
 			val="${pair#*=}"
 			case "$key" in
-			ENGINE|STRATEGY|CUSTOM_ARGS|HOSTLIST_MODE|QNUM|PORTS_TCP|PORTS_UDP|GATEWAY_MODE|WAN_IFACE|ENABLE_IPV6|AUTO_FAIL_THRESHOLD|AUTO_VERIFY) ;;
+			ENGINE|STRATEGY|CUSTOM_ARGS|HOSTLIST_MODE|QNUM|PORTS_TCP|PORTS_UDP|GATEWAY_MODE|WAN_IFACE|ENABLE_IPV6|AUTO_FAIL_THRESHOLD|AUTO_VERIFY|WATCHDOG_ACTION|PROFILE_AUTO) ;;
 			*) die "bilinmeyen ayar: $key" ;;
 			esac
 			# mevcut satırı sil, sonuna yenisini ekle
@@ -1461,9 +1466,14 @@ probe_uid() { id -u "$PROBE_USER" 2>/dev/null; }
 probe_https() {
 	local dom="$1" mode="$2" code rc
 	local pre=()
-	if [ "$mode" = bypass ]; then
-		pre=(runuser -u "$PROBE_USER" --)
-	fi
+	# bypass/tune: ölçüm kullanıcısı olarak. Paketleri probe_bypass
+	# zinciri işaretlediği için ana kuyruğa girmezler; "tune" modunda ise
+	# ayrıca yüklü olan unwall_tune tablosu onları aday stratejinin
+	# motoruna yönlendirir (bkz. cmd_tune). engine: root olarak, yani
+	# normal trafik gibi, aktif stratejiden geçerek.
+	case "$mode" in
+	bypass|tune) pre=(runuser -u "$PROBE_USER" --) ;;
+	esac
 	# %{http_code} bağlantı kurulamadığında 000 döner. Hangi HTTP kodunun
 	# döndüğü umurumuzda değil (403 de olsa TLS el sıkışması tamamlanmış,
 	# yani DPI araya girmemiş demektir); ayırt ettiğimiz şey bağlantının
@@ -1471,15 +1481,77 @@ probe_https() {
 	code="$(${pre[@]+"${pre[@]}"} curl -s -o /dev/null -w '%{http_code}' \
 		--max-time 8 --connect-timeout 4 --retry 0 \
 		"https://$dom/" 2>/dev/null)" && rc=0 || rc=$?
-	if [ "$rc" = 0 ] && [ -n "$code" ] && [ "$code" != "000" ]; then
+
+	# Sunucudan bir HTTP kodu geldiyse iş bitmiştir: TLS el sıkışması
+	# tamamlanmış, araya kimse girmemiş demektir. curl'ün çıkış kodunun
+	# sıfır olması şart DEĞİL - ör. WebSocket uçları "426 Upgrade
+	# Required" döndürüp HTTP/2 akışını kapatıyor (curl 92) ve bunu
+	# "engellendi" saymak, hiç engelli olmayan alan adlarını listede
+	# tutuyordu.
+	if [ -n "$code" ] && [ "$code" != "000" ]; then
 		printf 'ok'
 		return 0
 	fi
-	case "$rc" in
-	6|7|28) printf 'dead' ;;
-	*)      printf 'cut' ;;
-	esac
+
+	curl_class "$rc"
 	return 1
+}
+
+# curl çıkış kodunun ne anlama geldiği (man curl, EXIT CODES). Ayrımın
+# tamamı buna dayandığı için ayrı ve saf bir fonksiyon: testi de var.
+#   nodns : ad çözülemedi
+#   dead  : bağlanamadı ya da zaman aşımı - host ölü/erişilemez olabilir
+#   cut   : TLS ya da bağlantı araya girilerek koptu - DPI imzası
+#   cert  : sertifika/TLS yapılandırma sorunu - host CANLI, araya giren yok
+#   other : sınıflandıramadığımız her şey (DPI saymıyoruz)
+curl_class() {
+	case "$1" in
+	6)                          printf 'nodns' ;;
+	7|28)                       printf 'dead' ;;
+	35|52|56|92)                printf 'cut' ;;
+	51|58|59|60|66|77|83|90|91) printf 'cert' ;;
+	*)                          printf 'other' ;;
+	esac
+}
+
+# Host 443'e TCP bağlantısı kabul ediyor mu? Zaman aşımı/bağlanamama
+# durumunda "ölü host" ile "TLS el sıkışmasında kesiliyor" ayrımını bu
+# yapıyor: TR'deki tipik engelde SYN geçer, kesme ClientHello'dan sonra
+# gelir - yani TCP kurulabiliyorsa host canlıdır.
+# Ölçüm kullanıcısına gerek yok: çıplak bir TCP el sıkışmasını desync
+# etkilemiyor (motor SYN'i olduğu gibi geçiriyor), o yüzden doğrudan
+# bağlanıyoruz - runuser'a bağımlı olmamak da bir kazanç.
+tcp_reachable() {
+	timeout 4 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null
+}
+
+# Alan adı gerçekten var mı? Sorguyu ISS'nin DNS'ine değil, 443/TLS
+# üzerinden Cloudflare DoH'a soruyoruz (bkz. dns_reference_lookup ile aynı
+# gerekçe: düz DNS zehirlenebilir, o zaman her alan adı "yok" görünürdü).
+#   resolves | nxdomain | unknown
+doh_status() {
+	local dom="$1" out
+	command -v curl >/dev/null 2>&1 || { printf 'unknown'; return 0; }
+	command -v python3 >/dev/null 2>&1 || { printf 'unknown'; return 0; }
+	out="$(curl -s --max-time 6 -H 'accept: application/dns-json' \
+		"https://cloudflare-dns.com/dns-query?name=$dom&type=A" 2>/dev/null)" ||
+		{ printf 'unknown'; return 0; }
+	[ -n "$out" ] || { printf 'unknown'; return 0; }
+	printf '%s' "$out" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("unknown"); sys.exit(0)
+st = d.get("Status")
+if st == 3:
+    print("nxdomain")
+elif st == 0:
+    ans = d.get("Answer") or []
+    print("resolves" if any(a.get("type") in (1, 5) for a in ans) else "nxdomain")
+else:
+    print("unknown")
+' 2>/dev/null || printf 'unknown'
 }
 
 # Aynı alan adı ikinci kez yanlış pozitif çıkarsa artık tesadüf değildir;
@@ -1487,6 +1559,9 @@ probe_https() {
 # karantinadan siliyoruz ki gerçekten engellenmeye başlarsa motor onu
 # yeniden öğrenebilsin.
 CLEARED_STATE="$UW_ETC/.autohostlist-cleared"
+# "Engel gerçek ama strateji geçemiyor" çıkan alan adları: auto-tune'un
+# öncelikli hedef listesi.
+STILL_BLOCKED_STATE="$UW_ETC/.still-blocked"
 
 cleared_count() {
 	[ -f "$CLEARED_STATE" ] || { printf '0'; return 0; }
@@ -1558,13 +1633,115 @@ verify_one() {
 	# önce bir kez daha bakıyoruz. Yanlış pozitifi silmek ucuz, gerçek bir
 	# engeli yanlışlıkla silmek pahalı.
 	b2="$(probe_https "$dom" bypass)" && { printf 'false-positive'; return 0; }
+
+	# Sertifika hatası veren bir host CANLIDIR ve araya giren yoktur;
+	# sadece o adla düzgün TLS sunmuyordur (CDN kenarı, yanlış SNI, ölü
+	# sanal host). Desync bunu düzeltmez, listede tutmanın anlamı yok.
+	if [ "$b1" = cert ] || [ "$b2" = cert ] ||
+		[ "$b1" = other ] || [ "$b2" = other ]; then
+		printf 'not-dpi'
+		return 0
+	fi
+
+	# Ad hiç çözülmüyorsa liste girdisi geçersizdir (süresi dolmuş,
+	# yazım hatası, CDN'in artık üretmediği bir konak adı).
+	if [ "$b1" = nodns ] || [ "$b2" = nodns ]; then
+		case "$(doh_status "$dom")" in
+		nxdomain) printf 'invalid'; return 0 ;;
+		esac
+	fi
+
 	if probe_https "$dom" engine >/dev/null; then
 		printf 'blocked'
-	elif [ "$b1" = dead ] && [ "$b2" = dead ]; then
-		printf 'unreachable'
-	else
-		printf 'still-blocked'
+		return 0
 	fi
+	# Atlatmayla da açılmıyor. İmza DPI'a benziyorsa engel gerçektir ve
+	# stratejimiz yetmiyordur; benzemiyorsa (zaman aşımı, bağlanamama)
+	# host ölü olabilir - önce adın gerçekten var olup olmadığına bakalım.
+	if [ "$b1" = cut ] || [ "$b2" = cut ]; then
+		case "$(doh_status "$dom")" in
+		nxdomain) printf 'invalid' ;;
+		*)        printf 'still-blocked' ;;
+		esac
+	elif tcp_reachable "$dom" 443; then
+		# 443 açık ama HTTPS bitmiyor: host canlı, iş el sıkışmasında
+		# kesiliyor. Bu da engelin ta kendisi.
+		printf 'still-blocked'
+	else
+		case "$(doh_status "$dom")" in
+		nxdomain) printf 'invalid' ;;
+		*)        printf 'unreachable' ;;
+		esac
+	fi
+}
+
+# prune
+# Listelerdeki GEÇERSİZ girdileri ayıklar - DPI ölçümü yapmadan, sadece
+# "bu alan adı var mı?" diye sorarak. İki tür çöp birikiyor:
+#   * biçimsel olarak alan adı olmayan satırlar
+#   * artık çözülmeyen adlar (süresi dolmuş, CDN'in ürettiği geçici
+#     konak adları, yazım hataları)
+# Soru ISS'nin DNS'ine değil 443/TLS üzerinden Cloudflare DoH'a sorulur;
+# aksi halde DNS zehirlemesi olan bir ağda her alan adı "yok" görünür ve
+# bütün liste silinirdi.
+#
+# Yalnızca motorun kendi öğrendiği listelere (karantina + doğrulanmış)
+# dokunur; elle yazdığınız hostlist.txt ve excludelist.txt sizindir.
+cmd_prune() {
+	need_root
+	load_config
+	command -v curl >/dev/null 2>&1 || die "curl gerekli"
+
+	local tmp; tmp="$(mktemp)"
+	local jobs="${UW_PROBE_JOBS:-8}" pids=() which file dom queued=0
+
+	for which in pending auto; do
+		file="$(hostlist_file "$which")"
+		[ -f "$file" ] || continue
+		while read -r dom; do
+			[ -n "$dom" ] || continue
+			is_ip_literal "$dom" && continue
+			if ! hostlist_valid_domain "$dom"; then
+				printf '%s\t%s\tmalformed\n' "$which" "$dom" >> "$tmp"
+				queued=$((queued + 1))
+				continue
+			fi
+			while [ "$(jobs -rp | wc -l)" -ge "$jobs" ]; do
+				wait -n 2>/dev/null || break
+			done
+			{ printf '%s\t%s\t%s\n' "$which" "$dom" "$(doh_status "$dom")" >> "$tmp"; } &
+			pids+=($!)
+			queued=$((queued + 1))
+		done < <(grep -vE '^[[:space:]]*(#|$)' "$file" 2>/dev/null || true)
+	done
+
+	if [ "$queued" -eq 0 ]; then
+		rm -f "$tmp"
+		printf 'checked=0 removed=0 unknown=0\n'
+		return 0
+	fi
+	info "$queued alan adı denetleniyor..."
+	wait ${pids[@]+"${pids[@]}"} 2>/dev/null || true
+
+	local st n_rm=0 n_unknown=0
+	while IFS=$'\t' read -r which dom st; do
+		[ -n "$dom" ] || continue
+		case "$st" in
+		nxdomain|malformed)
+			hostlist_drop "$(hostlist_file "$which")" "$dom"
+			n_rm=$((n_rm + 1))
+			printf 'domain=%s verdict=%s\n' "$dom" "$st"
+			;;
+		unknown)
+			# DoH'a ulaşılamadı: emin olmadığımız bir girdiyi silmiyoruz.
+			n_unknown=$((n_unknown + 1))
+			;;
+		esac
+	done < "$tmp"
+	rm -f "$tmp"
+
+	printf 'checked=%s removed=%s unknown=%s\n' "$queued" "$n_rm" "$n_unknown"
+	return 0
 }
 
 # verify [--all] [alan-adı ...]
@@ -1653,6 +1830,9 @@ cmd_verify() {
 	wait
 
 	# --- 2. aşama: kararların uygulanması (sırayla) ---
+	# Stratejinin geçemediği alan adları auto-tune'un asıl hedefi; ölçümü
+	# zaten yapmışken bir kenara yazıyoruz (bkz. cmd_tune).
+	local still_tmp; still_tmp="$(mktemp)"
 	local src dom verdict times n_ok=0 n_fp=0 n_drop=0 n_still=0
 	while IFS=$'\t' read -r src dom verdict; do
 		[ -n "$dom" ] || continue
@@ -1684,10 +1864,25 @@ cmd_verify() {
 				hostlist_append "$verified" "$dom"
 				hostlist_drop "$pending" "$dom"
 			fi
-			[ "$verdict" = blocked ] && n_ok=$((n_ok + 1)) || n_still=$((n_still + 1))
+			if [ "$verdict" = blocked ]; then
+				n_ok=$((n_ok + 1))
+			else
+				n_still=$((n_still + 1))
+				printf '%s\n' "$dom" >> "$still_tmp"
+			fi
 			;;
 		skipped-ip)
 			:
+			;;
+		invalid|not-dpi)
+			# Geçersiz ad ya da DPI ile ilgisi olmayan bir arıza: listede
+			# yeri yok. Dışlama listesine yazmıyoruz - alan adı yarın
+			# gerçekten yayına girip engellenebilir.
+			case "$src" in
+			pending)  hostlist_drop "$pending" "$dom" ;;
+			verified) hostlist_drop "$verified" "$dom" ;;
+			esac
+			n_drop=$((n_drop + 1))
 			;;
 		unreachable)
 			# Ne atlatmayla ne atlatmasız açılıyor ve imza DPI'a benzemiyor:
@@ -1703,9 +1898,636 @@ cmd_verify() {
 		printf 'domain=%s verdict=%s\n' "$dom" "$verdict"
 	done < "$tmp"
 	rm -f "$tmp"
+	cat "$still_tmp" > "$STILL_BLOCKED_STATE" 2>/dev/null || true
+	rm -f "$still_tmp"
 
 	printf 'checked=%s blocked=%s false_positive=%s dropped=%s still_blocked=%s\n' \
 		"$queued" "$n_ok" "$n_fp" "$n_drop" "$n_still"
+	return 0
+}
+
+# =====================================================================
+# Hotspot (AP modu)
+#
+# Ağ geçidi modunun en zahmetli yanı, konsolda/TV'de elle statik IP + ağ
+# geçidi girmek. Kablosuz kartı AP modunu destekliyorsa bunun yerine PC
+# kendi Wi-Fi ağını yayabilir: cihaz o ağa bağlanır, DHCP ve varsayılan
+# ağ geçidi kendiliğinden gelir, trafiği de zaten bizim kurallarımızdan
+# geçer.
+#
+# DHCP/DNS'i NetworkManager'ın "shared" modu (dnsmasq) hallediyor; biz
+# yalnızca ağ geçidi kurallarını açıyoruz.
+# =====================================================================
+
+HOTSPOT_STATE="$UW_ETC/.hotspot"
+HOTSPOT_CONN="unwall-hotspot"
+
+hotspot_wifi_dev() {
+	command -v nmcli >/dev/null 2>&1 || return 1
+	nmcli -t -f DEVICE,TYPE device 2>/dev/null |
+		awk -F: '$2=="wifi" {print $1; exit}'
+}
+
+# Kart AP modunu destekliyor mu? (iw yoksa "bilinmiyor" = deneriz)
+hotspot_ap_capable() {
+	local dev="$1" phy
+	command -v iw >/dev/null 2>&1 || return 0
+	phy="$(iw dev "$dev" info 2>/dev/null | awk '/wiphy/ {print $2; exit}')"
+	[ -n "$phy" ] || return 0
+	iw phy "phy$phy" info 2>/dev/null |
+		awk '/Supported interface modes/,/^[[:space:]]*[A-Za-z].*:$/' |
+		grep -q '\* AP$'
+}
+
+cmd_hotspot() {
+	local action="${1:-status}"; shift || true
+	load_config
+
+	local dev; dev="$(hotspot_wifi_dev)" || true
+	case "$action" in
+	status)
+		local active=0 ssid=""
+		if command -v nmcli >/dev/null 2>&1 &&
+			nmcli -t -f NAME connection show --active 2>/dev/null |
+			grep -qx "$HOTSPOT_CONN"; then
+			active=1
+			ssid="$(nmcli -t -f 802-11-wireless.ssid connection show "$HOTSPOT_CONN" 2>/dev/null | cut -d: -f2-)"
+		fi
+		printf 'available=%s\ndevice=%s\ncapable=%s\nactive=%s\nssid=%s\n' \
+			"$(command -v nmcli >/dev/null 2>&1 && echo 1 || echo 0)" \
+			"${dev:-}" \
+			"$([ -n "${dev:-}" ] && hotspot_ap_capable "$dev" && echo 1 || echo 0)" \
+			"$active" "${ssid:-}"
+		;;
+	on)
+		need_root
+		command -v nmcli >/dev/null 2>&1 || die "hotspot için NetworkManager (nmcli) gerekli"
+		[ -n "${dev:-}" ] || die "kablosuz arayüz bulunamadı"
+		hotspot_ap_capable "$dev" || die "kablosuz kartınız AP modunu desteklemiyor ($dev)"
+
+		local ssid="${1:-Unwall}" pass="${2:-}"
+		if [ -z "$pass" ]; then
+			# Kullanıcı parola vermediyse üretiyoruz; ekrana basıyoruz ki
+			# cihaza girebilsin. 12 karakter, WPA'nın 8 karakter alt
+			# sınırının rahat üstünde.
+			pass="$(tr -dc 'a-hjkmnp-z2-9' </dev/urandom 2>/dev/null | head -c 12)"
+			[ -n "$pass" ] || pass="unwall$(date +%s | tail -c 6)"
+		fi
+		[ "${#pass}" -ge 8 ] || die "hotspot parolası en az 8 karakter olmalı"
+
+		# İnternete de aynı karttan çıkıyorsak AP moduna geçmek bağlantıyı
+		# koparabilir (kartların çoğu aynı anda hem istemci hem AP olamaz).
+		local wan; wan="${WAN_IFACE:-$(detect_wan)}"
+		if [ "$wan" = "$dev" ]; then
+			warn "internet de $dev üzerinden geliyor; kart aynı anda hem bağlanıp hem yayın yapamıyorsa bağlantı kopar"
+		fi
+
+		nmcli connection delete "$HOTSPOT_CONN" >/dev/null 2>&1 || true
+		nmcli device wifi hotspot ifname "$dev" con-name "$HOTSPOT_CONN" \
+			ssid "$ssid" password "$pass" >/dev/null ||
+			die "hotspot başlatılamadı (nmcli)"
+
+		printf 'ssid=%s\npassword=%s\ndevice=%s\n' "$ssid" "$pass" "$dev"
+		printf '%s\n' "$ssid" > "$HOTSPOT_STATE" 2>/dev/null || true
+
+		# Ağ geçidi kuralları: yönlendirme, NAT ve DNS yönlendirmesi.
+		if [ "$GATEWAY_MODE" != "1" ]; then
+			cmd_config set "GATEWAY_MODE=1"
+			info "ağ geçidi modu açıldı"
+		fi
+		if systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+			systemctl restart "$UNIT"
+		else
+			warn "motor çalışmıyor; hotspot'taki cihazlar için 'unwallctl start' gerekli"
+		fi
+		info "hotspot hazır: $ssid"
+		;;
+	off)
+		need_root
+		command -v nmcli >/dev/null 2>&1 || return 0
+		nmcli connection down "$HOTSPOT_CONN" >/dev/null 2>&1 || true
+		nmcli connection delete "$HOTSPOT_CONN" >/dev/null 2>&1 || true
+		rm -f "$HOTSPOT_STATE"
+		info "hotspot kapatıldı"
+		;;
+	*) die "kullanım: hotspot {status|on [SSID] [PAROLA]|off}" ;;
+	esac
+}
+
+# =====================================================================
+# Ağ başına profil
+#
+# Ev, mobil hotspot ve okul ağı farklı DPI'lardan geçiyor; her seferinde
+# stratejiyi elle değiştirmek gerekiyordu. Ağ değiştiğinde o ağ için en
+# son çalışan ayarı geri yüklüyoruz.
+#
+# Parmak izi olarak önce SSID'yi kullanıyoruz (aynı Wi-Fi ağına farklı
+# arayüzlerden bağlanmak aynı ağdır), yoksa varsayılan ağ geçidinin MAC
+# adresini (kablolu ağlarda ve IP'si değişen ağlarda kararlı), o da yoksa
+# arayüz + router IP'sini.
+# =====================================================================
+
+PROFILE_DB="$UW_ETC/profiles.tsv"
+
+neigh_mac() {
+	ip neigh show "$1" 2>/dev/null |
+		awk '{for(i=1;i<=NF;i++) if($i=="lladdr") {print $(i+1); exit}}'
+}
+
+network_fingerprint() {
+	local ssid router mac iface
+	if command -v nmcli >/dev/null 2>&1; then
+		ssid="$(nmcli -t -f active,ssid dev wifi 2>/dev/null |
+			awk -F: '$1=="yes" {print $2; exit}')"
+		if [ -n "${ssid:-}" ]; then
+			printf 'wifi:%s' "$ssid"
+			return 0
+		fi
+	fi
+	router="$(ip -4 route show default 2>/dev/null |
+		awk '/via/ {for(i=1;i<=NF;i++) if($i=="via") {print $(i+1); exit}}')"
+	if [ -n "$router" ]; then
+		mac="$(neigh_mac "$router")"
+		if [ -z "$mac" ]; then
+			# ARP girdisi eskimiş olabilir; tek paketle tazeleyip yeniden
+			# bakıyoruz. Parmak izinin kararlı olması şart: aynı ağ için
+			# bir sefer "gw:MAC", bir sefer "net:iface/ip" üretirsek
+			# kaydedilen profil bir daha hiç eşleşmez.
+			ping -c1 -W1 "$router" >/dev/null 2>&1 || true
+			mac="$(neigh_mac "$router")"
+		fi
+		if [ -n "$mac" ]; then
+			printf 'gw:%s' "$mac"
+		else
+			printf 'gw:%s' "$router"
+		fi
+		return 0
+	fi
+	iface="$(detect_wan)"
+	printf 'net:%s' "${iface:-?}"
+}
+
+profile_get() { # parmak izi -> satır
+	[ -f "$PROFILE_DB" ] || return 1
+	awk -F'\t' -v fp="$1" '$1==fp {print; found=1; exit} END {exit !found}' "$PROFILE_DB"
+}
+
+profile_put() { # parmak izi, motor, strateji, custom, hostlist
+	local fp="$1" tmp
+	mkdir -p "$(dirname "$PROFILE_DB")" 2>/dev/null || true
+	tmp="$(mktemp)"
+	{ [ -f "$PROFILE_DB" ] && awk -F'\t' -v fp="$fp" '$1!=fp' "$PROFILE_DB" || true
+	  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$fp" "$2" "$3" "$4" "$5" "$(date +%s)"; } > "$tmp"
+	cat "$tmp" > "$PROFILE_DB"
+	rm -f "$tmp"
+	chmod 0644 "$PROFILE_DB" 2>/dev/null || true
+}
+
+cmd_profile() {
+	local action="${1:-show}"; shift || true
+	load_config
+	local fp; fp="$(network_fingerprint)"
+
+	case "$action" in
+	show)
+		# cut ile ayrıştırıyoruz: IFS=$'\t' ile read, sekme "IFS boşluğu"
+		# sayıldığı için ardışık sekmeleri tek ayraç gibi görüyor ve
+		# CUSTOM_ARGS boşken bütün alanları kaydırıyordu (hostlist alanına
+		# zaman damgası düşüyordu).
+		local line eng="" strat="" custom="" hl="" saved=""
+		if line="$(profile_get "$fp")"; then
+			eng="$(printf '%s' "$line" | cut -f2)"
+			strat="$(printf '%s' "$line" | cut -f3)"
+			custom="$(printf '%s' "$line" | cut -f4)"
+			hl="$(printf '%s' "$line" | cut -f5)"
+			saved="$strat"
+		fi
+		printf 'network=%s\nsaved=%s\nengine=%s\nstrategy=%s\nhostlist=%s\ncurrent_strategy=%s\n' \
+			"$fp" "${saved:-}" "${eng:-}" "${strat:-}" "${hl:-}" "$STRATEGY"
+		;;
+	list)
+		[ -f "$PROFILE_DB" ] || return 0
+		awk -F'\t' '{printf "network=%s engine=%s strategy=%s hostlist=%s\n", $1, $2, $3, $5}' "$PROFILE_DB"
+		;;
+	save)
+		need_root
+		profile_put "$fp" "$ENGINE" "$STRATEGY" "$CUSTOM_ARGS" "$HOSTLIST_MODE"
+		info "profil kaydedildi: $fp -> $STRATEGY"
+		;;
+	forget)
+		need_root
+		[ -f "$PROFILE_DB" ] || return 0
+		local tmp; tmp="$(mktemp)"
+		awk -F'\t' -v fp="$fp" '$1!=fp' "$PROFILE_DB" > "$tmp"
+		cat "$tmp" > "$PROFILE_DB"; rm -f "$tmp"
+		info "profil silindi: $fp"
+		;;
+	apply)
+		need_root
+		local auto=0
+		[ "${1:-}" = "--auto" ] && auto=1
+		local line eng strat custom hl
+		if ! line="$(profile_get "$fp")"; then
+			[ "$auto" = 1 ] && return 0
+			die "bu ağ için kayıtlı profil yok: $fp"
+		fi
+		eng="$(printf '%s' "$line" | cut -f2)"
+		strat="$(printf '%s' "$line" | cut -f3)"
+		custom="$(printf '%s' "$line" | cut -f4)"
+		hl="$(printf '%s' "$line" | cut -f5)"
+		if [ "$eng" = "$ENGINE" ] && [ "$strat" = "$STRATEGY" ] &&
+			[ "$hl" = "$HOSTLIST_MODE" ]; then
+			[ "$auto" = 1 ] && return 0
+			info "zaten bu profil uygulanmış: $strat"
+			return 0
+		fi
+		cmd_config set "ENGINE=$eng" "STRATEGY=$strat" "CUSTOM_ARGS=$custom" \
+			"HOSTLIST_MODE=$hl"
+		info "profil uygulandı: $fp -> $strat"
+		systemctl is-active --quiet "$UNIT" && systemctl restart "$UNIT" || true
+		;;
+	*) die "kullanım: profile {show|list|save|apply [--auto]|forget}" ;;
+	esac
+}
+
+# =====================================================================
+# Auto-tune: aday stratejileri gerçek engelli sitelere karşı ölçmek
+#
+# blockcheck'ten farkı, çalışan bağlantıya hiç dokunmaması: aday strateji
+# ayrı bir kuyrukta (TUNE_QNUM) ikinci bir motor örneğinde çalışır ve
+# yalnızca ölçüm kullanıcısının trafiği o kuyruğa yönlendirilir. Senin
+# tarayıcın bu sırada normal stratejiyle çalışmaya devam eder.
+#
+# Sıra şöyle: probe_bypass (output/mangle) ölçüm trafiğini işaretler ->
+# ana zincir (priority 99) işaretli paketleri almaz -> unwall_tune
+# (priority 100) onları aday motorun kuyruğuna verir.
+# =====================================================================
+
+TUNE_TABLE="unwall_tune"
+TUNE_MARK="0x20000000"
+TUNE_PID=""
+
+tune_qnum() { printf '%s' $((QNUM + 1)); }
+
+tune_nft_apply() {
+	local q; q="$(tune_qnum)"
+	local puid; puid="$(probe_uid)"
+	[ -n "$puid" ] || return 1
+	nft delete table ip "$TUNE_TABLE" 2>/dev/null || true
+	{
+		printf 'table ip %s {\n' "$TUNE_TABLE"
+		printf '\tchain postrouting {\n'
+		printf '\t\ttype filter hook postrouting priority 100; policy accept;\n'
+		if [ -n "$PORTS_TCP" ]; then
+			printf '\t\tmeta skuid %s mark and %s == 0 meta l4proto tcp tcp dport { %s } ct original packets 1-12 queue num %s bypass\n' \
+				"$puid" "$TUNE_MARK" "$PORTS_TCP" "$q"
+		fi
+		if [ -n "$PORTS_UDP" ]; then
+			printf '\t\tmeta skuid %s mark and %s == 0 meta l4proto udp udp dport { %s } ct original packets 1-12 queue num %s bypass\n' \
+				"$puid" "$TUNE_MARK" "$PORTS_UDP" "$q"
+		fi
+		printf '\t}\n}\n'
+	} | nft -f -
+}
+
+tune_nft_flush() { nft delete table ip "$TUNE_TABLE" 2>/dev/null || true; }
+
+# Aday stratejiyle ikinci motoru başlatır. Başaramazsa 1 döner.
+tune_engine_start() {
+	local cand_args="$1" bin a=() f luadir
+	bin="$(engine_bin)"
+	[ -x "$bin" ] || return 1
+	if [ "$ENGINE" = "zapret2" ]; then
+		luadir="$(lua_dir)"
+		for f in zapret-lib zapret-antidpi zapret-auto; do
+			[ -r "$luadir/$f.lua" ] && a+=("--lua-init=@$luadir/$f.lua")
+		done
+		a+=("--fwmark=$TUNE_MARK")
+	else
+		a+=("--dpi-desync-fwmark=$TUNE_MARK")
+	fi
+	a+=("--qnum=$(tune_qnum)")
+	[ -n "$PORTS_TCP" ] && a+=("--filter-tcp=$PORTS_TCP")
+	[ -n "$PORTS_UDP" ] && a+=("--filter-udp=$PORTS_UDP")
+	command -v getent >/dev/null 2>&1 && getent passwd nobody >/dev/null 2>&1 &&
+		a+=("--user=nobody")
+	local carr=(); read -ra carr <<< "$cand_args"
+	a+=("${carr[@]}")
+
+	mkdir -p "$UW_LOG" 2>/dev/null || true
+	"$bin" "${a[@]}" >>"$UW_LOG/tune.log" 2>&1 &
+	TUNE_PID=$!
+	# Motorun kuyruğa bağlanması bir an sürüyor; hazır olmadan ölçersek
+	# paketler bypass'a düşer ve aday haksız yere "çalışmıyor" görünür.
+	sleep 1
+	kill -0 "$TUNE_PID" 2>/dev/null || { TUNE_PID=""; return 1; }
+}
+
+tune_engine_stop() {
+	[ -n "$TUNE_PID" ] || return 0
+	kill "$TUNE_PID" 2>/dev/null || true
+	wait "$TUNE_PID" 2>/dev/null || true
+	TUNE_PID=""
+}
+
+tune_cleanup() {
+	tune_engine_stop
+	tune_nft_flush
+}
+
+# Aday listesi: bu motorun strategies.conf'taki profilleri, argümanlarına
+# göre tekilleştirilmiş. TR profillerinin çoğu birebir aynı argümanları
+# taşıyor; aynı şeyi dört kez ölçmenin anlamı yok.
+tune_candidates() {
+	local eng id label args label_en seen=""
+	while IFS='|' read -r eng id label args label_en; do
+		case "$eng" in ''|\#*) continue ;; esac
+		[ "$eng" = "$ENGINE" ] || continue
+		[ -n "$args" ] || continue
+		case "$seen" in *"|$args|"*) continue ;; esac
+		seen="$seen|$args|"
+		printf '%s\t%s\n' "$id" "$args"
+	done < "$STRATEGY_FILE"
+}
+
+# Hazır profillerin ötesinde, ölçerek denenecek parametre ızgarası.
+# Türkiye'deki DPI'lara karşı ayırt edici olan iki şey var: sahte paketin
+# TTL'i (ISS'nin DPI'ına ulaşıp sunucuya ulaşmaması gerekiyor) ve bölme
+# yöntemi. Izgara bu ikisini tarıyor; --deep daha geniş TTL aralığı dener.
+tune_grid() {
+	local deep="${1:-0}" ttls="2 3 4 5" n=0
+	[ "$deep" = 1 ] && ttls="1 2 3 4 5 6 7 8"
+	if [ "$ENGINE" = "zapret2" ]; then
+		local t pos
+		for pos in 1 2 3; do
+			n=$((n + 1))
+			printf 'auto:md-pos%s\t--payload=tls_client_hello --lua-desync=multidisorder:pos=%s:seqovl=1\n' "$pos" "$pos"
+		done
+		for t in $ttls; do
+			printf 'auto:ms-ttl%s\t--payload=tls_client_hello --lua-desync=multisplit:blob=fake_default_tls:ip_ttl=%s:pos=2:nodrop:repeats=1\n' "$t" "$t"
+			printf 'auto:fake-ttl%s\t--payload=tls_client_hello --lua-desync=fake:blob=0x00000000:ip_ttl=%s:repeats=1\n' "$t" "$t"
+		done
+		[ "$deep" = 1 ] || return 0
+		for t in $ttls; do
+			printf 'auto:fake2-ttl%s\t--payload=tls_client_hello --lua-desync=fake:blob=0x00000000:ip_ttl=%s:repeats=2\n' "$t" "$t"
+		done
+	else
+		local t
+		for t in $ttls; do
+			printf 'auto:fake-ttl%s\t--dpi-desync=fake --dpi-desync-ttl=%s\n' "$t" "$t"
+			printf 'auto:disorder-ttl%s\t--dpi-desync=disorder2 --dpi-desync-ttl=%s\n' "$t" "$t"
+		done
+		printf 'auto:md5sig\t--dpi-desync=fake --dpi-desync-fooling=md5sig\n'
+	fi
+}
+
+# Hazır profiller + ızgara, argümanlara göre tekilleştirilmiş.
+tune_all_candidates() {
+	local deep="${1:-0}" seen="" id args
+	while IFS=$'\t' read -r id args; do
+		[ -n "$args" ] || continue
+		case "$seen" in *"|$args|"*) continue ;; esac
+		seen="$seen|$args|"
+		printf '%s\t%s\n' "$id" "$args"
+	done < <(tune_candidates; tune_grid "$deep")
+}
+
+# Bir aday için: test kümesindeki kaç alan adı açılıyor?
+tune_score() {
+	local doms="$1" tmp dom ok=0 pids=()
+	tmp="$(mktemp)"
+	for dom in $doms; do
+		{ probe_https "$dom" tune >/dev/null && printf 'x' >> "$tmp"; } &
+		pids+=($!)
+	done
+	# Çıplak "wait" olmaz: bu fonksiyon komut ikamesi içinde, yani alt
+	# kabukta çalışıyor ve üst kabuğun iş tablosunu (aday motor süreci de
+	# orada) miras alıyor - onu beklemeye çalışıp "not a child of this
+	# shell" uyarısı basıyordu. Yalnızca kendi başlattığımız ölçümleri
+	# bekliyoruz.
+	wait ${pids[@]+"${pids[@]}"} 2>/dev/null || true
+	ok="$(wc -c < "$tmp" 2>/dev/null || printf 0)"
+	rm -f "$tmp"
+	printf '%s' "${ok:-0}"
+}
+
+# tune [--apply] [--limit N] [--domains a,b,c]
+cmd_tune() {
+	need_root
+	load_config
+	command -v curl >/dev/null 2>&1 || die "curl gerekli"
+	command -v runuser >/dev/null 2>&1 || die "runuser gerekli (util-linux)"
+
+	local apply=0 limit=8 want="" deep=0
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--apply)   apply=1; shift ;;
+		--deep)    deep=1; shift ;;
+		--limit)   limit="${2:-8}"; shift 2 ;;
+		--domains) want="$(printf '%s' "${2:-}" | tr ',' ' ')"; shift 2 ;;
+		*) die "kullanım: tune [--apply] [--deep] [--limit N] [--domains a,b,c]" ;;
+		esac
+	done
+
+	if [ -z "$(probe_uid)" ]; then
+		ensure_probe_user || die "ölçüm kullanıcısı oluşturulamadı: $PROBE_USER"
+	fi
+	nft list chain ip "$NFT_TABLE" probe_bypass >/dev/null 2>&1 ||
+		nft list chain inet "$NFT_TABLE" probe_bypass >/dev/null 2>&1 ||
+		die "kurallar yüklü değil; önce: unwallctl start"
+
+	# --- test kümesi: gerçekten engelli olduğu ÖLÇÜLEN alan adları ---
+	local pool dom candidates_doms=""
+	if [ -n "$want" ]; then
+		pool="$want"
+	else
+		# Doğrulanmış listeden rastgele bir örneklem; hepsini ölçmek
+		# gereksiz, tek istediğimiz stratejileri ayırt edecek kadar zor
+		# hedef.
+		# Önce "verify" sırasında stratejinin geçemediği tespit edilen
+		# alan adları - ölçümü zaten yapılmış zor hedefler. Sonra
+		# doğrulanmış listeden rastgele örneklem. Aynı alan adı iki
+		# kaynakta da olabilir; tekilleştiriyoruz.
+		pool="$( { grep -vE '^[[:space:]]*(#|$)' "$STILL_BLOCKED_STATE" 2>/dev/null || true
+			grep -vE '^[[:space:]]*(#|$)' "$(hostlist_file auto)" 2>/dev/null |
+				shuf -n "$((limit * 6))" 2>/dev/null || true
+		} | awk 'NF && !seen[$0]++' | tr '\n' ' ')"
+	fi
+	[ -n "$pool" ] || die "test edilecek alan adı yok (önce: unwallctl verify)"
+
+	# Test kümesi seçimi. Kolay hedeflerle ölçüm yapmanın anlamı yok:
+	# bu ağda hemen her aday onları geçiyor ve bütün stratejiler 4/4
+	# görünüyor. Asıl iş, mevcut stratejinin GEÇEMEDİĞİ siteleri
+	# düzeltmek - o yüzden önce onları arıyoruz:
+	#   hard : atlatmasız kapalı VE mevcut stratejiyle de kapalı
+	#   easy : atlatmasız kapalı ama mevcut strateji zaten açıyor
+	info "test kümesi seçiliyor..."
+	local tmp jobs="${UW_PROBE_JOBS:-8}" pids=()
+	tmp="$(mktemp)"
+	for dom in $pool; do
+		is_ip_literal "$dom" && continue
+		while [ "$(jobs -rp | wc -l)" -ge "$jobs" ]; do
+			wait -n 2>/dev/null || break
+		done
+		{
+			if probe_https "$dom" bypass >/dev/null; then
+				: # atlatmasız da açılıyor: ölçüm için değersiz
+			elif probe_https "$dom" engine >/dev/null; then
+				printf '%s\teasy\n' "$dom" >> "$tmp"
+			else
+				printf '%s\thard\n' "$dom" >> "$tmp"
+			fi
+		} &
+		pids+=($!)
+	done
+	wait ${pids[@]+"${pids[@]}"} 2>/dev/null || true
+
+	local hard easy n_hard n_easy
+	hard="$(awk -F'\t' '$2=="hard" {print $1}' "$tmp" | head -n "$limit" | tr '\n' ' ')"
+	easy="$(awk -F'\t' '$2=="easy" {print $1}' "$tmp" | head -n "$limit" | tr '\n' ' ')"
+	rm -f "$tmp"
+	n_hard="$(printf '%s' "$hard" | wc -w)"
+	n_easy="$(printf '%s' "$easy" | wc -w)"
+	printf 'blocked_now=%s current_fails=%s\n' "$((n_hard + n_easy))" "$n_hard"
+
+	local n cur_ok
+	if [ "$n_hard" -gt 0 ]; then
+		candidates_doms="$hard"
+		n="$n_hard"
+		cur_ok=0
+		info "test kümesi ($n, mevcut stratejinin geçemedikleri): $hard"
+	elif [ "$n_easy" -gt 0 ]; then
+		# Geçemediği hiçbir site yok: iyileştirilecek bir şey de yok.
+		printf 'best=%s score=%s/%s current=%s/%s\n' \
+			"$STRATEGY" "$n_easy" "$n_easy" "$n_easy" "$n_easy"
+		info "mevcut strateji ($STRATEGY) engelli sitelerin hepsini geçiyor; aday aranmadı"
+		return 0
+	else
+		die "şu an engelli görünen alan adı bulunamadı; ölçüm yapılamaz"
+	fi
+	printf 'candidate=%s score=%s/%s current=1\n' "$STRATEGY" "$cur_ok" "$n"
+
+	# --- adaylar ---
+	trap tune_cleanup EXIT INT TERM
+	tune_nft_apply || die "ölçüm kuralları yüklenemedi"
+
+	local best_id="" best_args="" best_score=-1 id args score
+	while IFS=$'\t' read -r id args; do
+		[ -n "$id" ] || continue
+		if ! tune_engine_start "$args"; then
+			printf 'candidate=%s score=engine-failed\n' "$id"
+			continue
+		fi
+		score="$(tune_score "$candidates_doms")"
+		tune_engine_stop
+		printf 'candidate=%s score=%s/%s\n' "$id" "$score" "$n"
+		if [ "$score" -gt "$best_score" ]; then
+			best_score="$score"; best_id="$id"; best_args="$args"
+		fi
+		# Test kümesinin tamamını geçen bir aday bulduysak aramayı
+		# uzatmanın anlamı yok.
+		[ "$score" -ge "$n" ] && break
+	done < <(tune_all_candidates "$deep")
+
+	tune_cleanup
+	trap - EXIT INT TERM
+
+	[ -n "$best_id" ] || die "hiçbir aday ölçülemedi (bkz. $UW_LOG/tune.log)"
+	printf 'best=%s score=%s/%s current=%s/%s\n' \
+		"$best_id" "$best_score" "$n" "$cur_ok" "$n"
+	if [ "$best_score" -le 0 ]; then
+		# Hiçbir aday tek bir hedefi bile açamadı. Bu, stratejinin kötü
+		# olduğu anlamına gelmez: engel IP düzeyinde ya da el sıkışma
+		# sonrasında olabilir, ki bunları ClientHello'yu bölerek geçmek
+		# mümkün değil.
+		warn "hiçbir aday bu hedefleri geçemedi; engel muhtemelen IP düzeyinde ya da el sıkışma sonrasında (desync bunu çözmez)"
+	fi
+
+	if [ "$apply" = 1 ]; then
+		if [ "$best_score" -le "$cur_ok" ]; then
+			info "mevcut strateji ($STRATEGY) en az adaylar kadar iyi; değiştirilmedi"
+			return 0
+		fi
+		case "$best_id" in
+		auto:*)
+			# Izgaradan çıkan aday strategies.conf'ta yok; "analiz"
+			# stratejisi tam da bunun için var (CUSTOM_ARGS'tan okunur).
+			cmd_config set "CUSTOM_ARGS=$best_args" "STRATEGY=analiz"
+			;;
+		*)
+			cmd_config set "STRATEGY=$best_id"
+			;;
+		esac
+		info "strateji değiştirildi: $STRATEGY -> $best_id"
+		systemctl is-active --quiet "$UNIT" && cmd_restart || true
+	fi
+	return 0
+}
+
+# =====================================================================
+# Nöbetçi (watchdog)
+#
+# Strateji bir sabah çalışmayı bırakabiliyor: ISS DPI'ını günceller ve
+# kullanıcı bunu "internet bozuldu" diye yaşar. Nöbetçi, engelli olduğu
+# ÖLÇÜLMÜŞ birkaç alan adını düzenli olarak aktif stratejiden geçirip
+# hâlâ açılıyorlar mı diye bakar. Açılmıyorlarsa ya haber verir ya da
+# (WATCHDOG_ACTION=tune ise) auto-tune'u çalıştırıp en iyi adayı uygular.
+# =====================================================================
+
+WATCHDOG_STATE="$UW_ETC/.watchdog"
+
+watchdog_write_state() { # verdict, ok, total
+	printf 'verdict=%s\nok=%s\ntotal=%s\nts=%s\nstrategy=%s\n' \
+		"$1" "$2" "$3" "$(date +%s)" "$STRATEGY" > "$WATCHDOG_STATE" 2>/dev/null || true
+}
+
+cmd_watchdog() {
+	need_root
+	load_config
+	local auto=0
+	[ "${1:-}" = "--auto" ] && auto=1
+
+	if ! systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+		[ "$auto" = 1 ] && return 0
+		die "motor çalışmıyor"
+	fi
+	if [ -z "$(probe_uid)" ]; then
+		[ "$auto" = 1 ] && return 0
+		die "ölçüm kullanıcısı yok: $PROBE_USER"
+	fi
+
+	# Örneklem: doğrulanmış (yani gerçekten engelli olduğu ölçülmüş)
+	# listeden birkaç alan adı. Hepsini denemenin anlamı yok; amaç
+	# stratejinin ayakta olup olmadığını anlamak.
+	local sample
+	sample="$(grep -vE '^[[:space:]]*(#|$)' "$(hostlist_file auto)" 2>/dev/null |
+		grep -vE '^([0-9]{1,3}\.){3}[0-9]{1,3}$' |
+		shuf -n 5 2>/dev/null | tr '\n' ' ')"
+	if [ -z "${sample// /}" ]; then
+		[ "$auto" = 1 ] && return 0
+		die "ölçülecek alan adı yok (önce: unwallctl verify)"
+	fi
+
+	local dom ok=0 total=0
+	for dom in $sample; do
+		total=$((total + 1))
+		probe_https "$dom" engine >/dev/null && ok=$((ok + 1))
+	done
+
+	local verdict="ok"
+	# Yarısından azı açılıyorsa strateji bozulmuş sayılır. Tek bir
+	# başarısızlık, sitenin kendi arızası da olabilir - bu yüzden oran.
+	[ $((ok * 2)) -lt "$total" ] && verdict="degraded"
+	watchdog_write_state "$verdict" "$ok" "$total"
+	printf 'verdict=%s ok=%s total=%s strategy=%s\n' "$verdict" "$ok" "$total" "$STRATEGY"
+
+	if [ "$verdict" = "degraded" ]; then
+		warn "strateji bozulmuş görünüyor ($ok/$total açıldı, strateji: $STRATEGY)"
+		if [ "${WATCHDOG_ACTION:-notify}" = "tune" ]; then
+			info "auto-tune çalıştırılıyor..."
+			cmd_tune --apply || warn "auto-tune başarısız"
+		fi
+	fi
 	return 0
 }
 
@@ -1713,26 +2535,31 @@ cmd_verify() {
 # Kurulum hiçbir şeyi kendiliğinden etkinleştirmiyor; bu, arayüzdeki
 # anahtarın karşılığı.
 VERIFY_TIMER="unwall-verify.timer"
+WATCHDOG_TIMER="unwall-watchdog.timer"
 
+cmd_watchdog_timer() { cmd_verify_timer "${1:-status}" "$WATCHDOG_TIMER"; }
+
+# cmd_verify_timer <on|off|status> [birim]
 cmd_verify_timer() {
+	local timer="${2:-$VERIFY_TIMER}"
 	case "${1:-status}" in
 	on)
 		need_root
-		systemctl enable --now "$VERIFY_TIMER" ||
-			die "zamanlayıcı etkinleştirilemedi ($VERIFY_TIMER)"
-		info "otomatik doğrulama açık (saatte bir)"
+		systemctl enable --now "$timer" ||
+			die "zamanlayıcı etkinleştirilemedi ($timer)"
+		info "açık: $timer"
 		;;
 	off)
 		need_root
-		systemctl disable --now "$VERIFY_TIMER" >/dev/null 2>&1 || true
-		info "otomatik doğrulama kapalı"
+		systemctl disable --now "$timer" >/dev/null 2>&1 || true
+		info "kapalı: $timer"
 		;;
 	status)
 		# systemctl is-enabled birim yokken "not-found" YAZAR ve 1 döner;
 		# grep -c eşleşme yokken "0" yazıp yine 1 döner. İkisinde de
 		# "|| echo ..." ikinci bir satır basardı.
 		local st n
-		st="$(systemctl is-enabled "$VERIFY_TIMER" 2>/dev/null || true)"
+		st="$(systemctl is-enabled "$timer" 2>/dev/null || true)"
 		case "$st" in enabled) ;; *) st="disabled" ;; esac
 		n="$(grep -cvE '^[[:space:]]*(#|$)' "$(hostlist_file pending)" 2>/dev/null || true)"
 		[ -n "$n" ] || n=0
@@ -1740,6 +2567,65 @@ cmd_verify_timer() {
 		;;
 	*) die "kullanım: verify-timer {on|off|status}" ;;
 	esac
+}
+
+# =====================================================================
+# Tek seferde tüm durum (arayüzün Teşhis sayfası ve "bir şey mi bozuldu?"
+# sorusu için). Her satır key=value; arayüz bunu doğrudan ayrıştırıyor.
+# =====================================================================
+
+list_count() {
+	local f; f="$(hostlist_file "$1")" || return 0
+	local n; n="$(grep -cvE '^[[:space:]]*(#|$)' "$f" 2>/dev/null || true)"
+	printf '%s' "${n:-0}"
+}
+
+cmd_report() {
+	load_config
+	printf 'version=%s\nengine=%s\nstrategy=%s\nhostlist=%s\n' \
+		"$VERSION" "$ENGINE" "$STRATEGY" "$HOSTLIST_MODE"
+
+	printf 'list_manual=%s\nlist_auto=%s\nlist_pending=%s\nlist_exclude=%s\n' \
+		"$(list_count manual)" "$(list_count auto)" \
+		"$(list_count pending)" "$(list_count exclude)"
+
+	# nöbetçi
+	local wv="unknown" wok=0 wtotal=0 wts=0
+	if [ -f "$WATCHDOG_STATE" ]; then
+		wv="$(sed -n 's/^verdict=//p' "$WATCHDOG_STATE")"
+		wok="$(sed -n 's/^ok=//p' "$WATCHDOG_STATE")"
+		wtotal="$(sed -n 's/^total=//p' "$WATCHDOG_STATE")"
+		wts="$(sed -n 's/^ts=//p' "$WATCHDOG_STATE")"
+	fi
+	printf 'watchdog=%s\nwatchdog_ok=%s\nwatchdog_total=%s\nwatchdog_ts=%s\nwatchdog_action=%s\n' \
+		"${wv:-unknown}" "${wok:-0}" "${wtotal:-0}" "${wts:-0}" "${WATCHDOG_ACTION:-notify}"
+
+	# zamanlayıcılar
+	local t name
+	for t in verify watchdog; do
+		name="unwall-$t.timer"
+		printf 'timer_%s=%s\n' "$t" \
+			"$(systemctl is-enabled "$name" 2>/dev/null | grep -qx enabled && echo enabled || echo disabled)"
+	done
+
+	# ağ profili
+	local fp line strat=""
+	fp="$(network_fingerprint)"
+	if line="$(profile_get "$fp")"; then
+		strat="$(printf '%s' "$line" | cut -f3)"
+	fi
+	printf 'network=%s\nprofile_strategy=%s\n' "$fp" "$strat"
+
+	# ölçüm altyapısı
+	printf 'probe_user=%s\n' "$([ -n "$(probe_uid)" ] && echo 1 || echo 0)"
+
+	# ağ geçidi / hotspot / dns
+	printf 'gateway=%s\n' "$GATEWAY_MODE"
+	if [ "$GATEWAY_MODE" = "1" ]; then
+		printf 'gateway_dns=%s\n' "$(dns_gateway_target | tr ' ' ':')"
+	fi
+	cmd_hotspot status | sed 's/^/hotspot_/'
+	dns_status | sed 's/^/dns_/'
 }
 
 cmd_dnscheck() {
@@ -2349,7 +3235,14 @@ Kullanım: unwallctl <komut> [argüman]
   hostlist add LISTE ALAN   listeye alan adı ekle       (root)
   hostlist remove LISTE ALAN  listeden alan adı sil     (root)
   verify [--all] [ALAN ...] öğrenilen alan adlarını ölçüp doğrula (root)
+  prune                     listelerdeki geçersiz alan adlarını ayıkla (root)
   verify-timer on|off|status  düzenli doğrulamayı aç/kapat     (root)
+  tune [--apply] [--deep]   aday stratejileri ölç, en iyisini seç (root)
+  profile show|list|save|apply|forget   ağ başına strateji profili
+  watchdog                  strateji hâlâ çalışıyor mu, ölç         (root)
+  watchdog-timer on|off     nöbetçiyi aç/kapat                      (root)
+  hotspot status|on|off     Wi-Fi ağı yayınla (konsol/TV için)      (root)
+  report                    tek seferde tüm durum (arayüz/teşhis)
   dns status [--probe]      şifreli DNS durumu
   dns test                  şifreli DNS'i sına
   dns enable [sağlayıcı] [arka-uç]   DoT/DoH aç      (root)
@@ -2391,7 +3284,14 @@ main() {
 	conncheck)    cmd_conncheck "$@" ;;
 	hostlist)     cmd_hostlist "$@" ;;
 	verify)       cmd_verify "$@" ;;
-	verify-timer) cmd_verify_timer "$@" ;;
+	prune)        cmd_prune "$@" ;;
+	verify-timer)   cmd_verify_timer "$@" ;;
+	watchdog-timer) cmd_watchdog_timer "$@" ;;
+	tune)         cmd_tune "$@" ;;
+	profile)      cmd_profile "$@" ;;
+	watchdog)     cmd_watchdog "$@" ;;
+	hotspot)      cmd_hotspot "$@" ;;
+	report)       cmd_report ;;
 	dns)          cmd_dns "$@" ;;
 	doctor)       cmd_doctor ;;
 	conflicts)    cmd_conflicts ;;

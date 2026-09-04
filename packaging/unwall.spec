@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.5.0
+Version:        2.0.0
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -86,6 +86,16 @@ install -Dm644 %{_builddir}/unwall-verify.service \
 	%{buildroot}/usr/lib/systemd/system/unwall-verify.service
 install -Dm644 systemd/unwall-verify.timer \
 	%{buildroot}/usr/lib/systemd/system/unwall-verify.timer
+sed -e 's|@BINDIR@|/usr/bin|g' systemd/unwall-watchdog.service \
+	> %{_builddir}/unwall-watchdog.service
+install -Dm644 %{_builddir}/unwall-watchdog.service \
+	%{buildroot}/usr/lib/systemd/system/unwall-watchdog.service
+install -Dm644 systemd/unwall-watchdog.timer \
+	%{buildroot}/usr/lib/systemd/system/unwall-watchdog.timer
+sed -e 's|@BINDIR@|/usr/bin|g' packaging/nm-dispatcher/90-unwall \
+	> %{_builddir}/90-unwall
+install -Dm755 %{_builddir}/90-unwall \
+	%{buildroot}%{_sysconfdir}/NetworkManager/dispatcher.d/90-unwall
 
 sed 's|@BINDIR@|%{_bindir}|g' polkit/io.github.WinTone01.Unwall.policy \
 	> %{_builddir}/io.github.WinTone01.Unwall.policy
@@ -140,6 +150,7 @@ fi
 %preun
 if [ "$1" -eq 0 ]; then
 	systemctl disable --now unwall-verify.timer >/dev/null 2>&1 || :
+	systemctl disable --now unwall-watchdog.timer >/dev/null 2>&1 || :
 	systemctl disable --now unwall.service >/dev/null 2>&1 || :
 	if [ -x %{_bindir}/unwallctl ]; then
 		unwallctl nft-flush >/dev/null 2>&1 || :
@@ -174,6 +185,9 @@ fi
 /usr/lib/systemd/system/unwall.service
 /usr/lib/systemd/system/unwall-verify.service
 /usr/lib/systemd/system/unwall-verify.timer
+/usr/lib/systemd/system/unwall-watchdog.service
+/usr/lib/systemd/system/unwall-watchdog.timer
+%{_sysconfdir}/NetworkManager/dispatcher.d/90-unwall
 %{_datadir}/polkit-1/actions/io.github.WinTone01.Unwall.policy
 %{_datadir}/applications/io.github.WinTone01.Unwall.desktop
 %{_datadir}/icons/hicolor/scalable/apps/io.github.WinTone01.Unwall.svg
@@ -181,6 +195,14 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Fri Sep 04 2026 WinTone01 <wintone01@users.noreply.github.com> - 2.0.0-1
+- Auto-tune: "unwallctl tune [--apply] [--deep]" runs candidate strategies in a second engine instance on its own queue (QNUM+1) and scores them against domains that are measured as blocked right now. Only the probe user's traffic is routed to that queue, so the connection you are using keeps working on the current strategy. Candidates are the ready-made profiles plus a parameter grid (fake TTL, split method), deduplicated by arguments; a grid winner is stored as STRATEGY=analiz plus CUSTOM_ARGS.
+- Per-network profiles: "unwallctl profile save|apply|list" remembers engine, strategy and hostlist mode per network (Wi-Fi SSID, else default gateway MAC, else router IP), and a NetworkManager dispatcher hook restores them when the network changes.
+- Watchdog: "unwallctl watchdog" opens a sample of verified-blocked domains through the active strategy and reports degraded when fewer than half open. unwall-watchdog.timer runs it every 30 minutes; WATCHDOG_ACTION=tune makes it search for a working strategy by itself.
+- Hotspot: "unwallctl hotspot on|off" broadcasts a Wi-Fi network via NetworkManager shared mode when the card supports AP, so a console or TV needs no manual IP settings. Gateway rules are turned on with it.
+- "unwallctl prune" drops list entries whose domain no longer resolves, asking Cloudflare DoH over 443/TLS rather than the ISP's DNS (asking in plaintext would make every domain look gone on a network that poisons DNS). Malformed entries go too; hostlist.txt and excludelist.txt are never touched.
+- Fix probes reporting live endpoints as blocked: a WebSocket endpoint answers HTTP 426 and closes the HTTP/2 stream (curl 92), and the probe only accepted exit code 0. A probe now succeeds as soon as the server returns any HTTP status. curl exit codes are classified: TLS cuts (35/52/56) read as interference, certificate errors (51/58/59/60/...) as a live host, and on a timeout a bare TCP connection to 443 decides whether the host is alive at all. Verify gained "not-dpi" and "invalid" verdicts for the entries that were being mistaken for blocks.
+- New Health page in the GUI and "unwallctl report" behind it: last strategy check, tuner buttons, this network's profile, hotspot switch and list counts.
 * Fri Sep 04 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.5.0-1
 - Auto-learned domains are verified by measurement before they become permanent. The engine's failure detector cannot tell a blocked site from one that is briefly down, an unanswered telemetry endpoint or a wifi hiccup, and with the fail threshold lowered to 1 in 1.3.6 a single failure was enough: on a real machine 368 of 497 learned entries (74%%) had never been blocked. Applying a strategy to those can break them.
 - New learnings go to /etc/unwall/autohostlist-pending.txt (quarantine) and reach autohostlist.txt only after "unwallctl verify" opens two connections to the domain - one with the bypass, one without, through a dedicated unprivileged unwall-probe user whose traffic carries the engine's fwmark and therefore skips the queue - and sees the difference.

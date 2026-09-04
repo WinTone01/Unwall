@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk, Pango  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.5.0"
+VERSION = "2.0.0"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -130,6 +130,46 @@ TR = {
     'Checks newly learned domains every hour': 'Yeni öğrenilen alan adlarını saatte bir denetler',
     'verify learned domains': 'öğrenilenleri doğrula',
     'Verification finished — see the Log page': 'Doğrulama tamamlandı — ayrıntılar Günlük sayfasında',
+    'Health': 'Sağlık',
+    'Strategy health': 'Strateji sağlığı',
+    'Opens a few domains that were measured as blocked and checks whether the current strategy still gets through': 'Engelli olduğu ölçülmüş birkaç alan adını açmayı deneyip stratejinin hâlâ geçip geçmediğine bakar',
+    'Last check': 'Son denetim',
+    'Check now': 'Şimdi denetle',
+    'Keep watching': 'Nöbette kal',
+    'Checks every 30 minutes and warns when it breaks': 'Yarım saatte bir denetler, bozulduğunda haber verir',
+    'When it breaks': 'Bozulduğunda',
+    'Only warn, or search for a working strategy': 'Yalnızca haber ver ya da çalışan bir strateji ara',
+    'Warn only': 'Yalnızca haber ver',
+    'Find a working strategy': 'Çalışan strateji ara',
+    'Find the best strategy': 'En iyi stratejiyi bul',
+    'Runs candidate strategies in a second engine on a separate queue and measures them against sites that are actually blocked. Your own connection keeps working meanwhile.': 'Aday stratejileri ayrı bir kuyrukta ikinci bir motorda çalıştırıp gerçekten engelli sitelere karşı ölçer. Bu sırada kendi bağlantınız çalışmaya devam eder.',
+    'Measure candidates': 'Adayları ölç',
+    'Takes a few minutes': 'Birkaç dakika sürer',
+    'Measure': 'Ölç',
+    'Measure and apply': 'Ölç ve uygula',
+    'Measuring — this takes a few minutes': 'Ölçülüyor — birkaç dakika sürer',
+    'This network': 'Bu ağ',
+    'Home, mobile hotspot and a school network go through different DPI. Save the strategy that works here and Unwall restores it when you come back.': 'Ev, mobil hotspot ve okul ağı farklı DPI’lardan geçer. Burada çalışan stratejiyi kaydedin, bu ağa döndüğünüzde Unwall onu geri yükler.',
+    'Network': 'Ağ',
+    'Save for this network': 'Bu ağ için kaydet',
+    'Wi-Fi hotspot': 'Wi-Fi hotspot',
+    'Broadcasts a Wi-Fi network from this computer so a console or TV can join it without any manual IP settings — their traffic goes through Unwall automatically.': 'Bu bilgisayardan bir Wi-Fi ağı yayınlar; konsol ya da TV hiçbir elle IP ayarı yapmadan bu ağa bağlanır ve trafiği kendiliğinden Unwall’dan geçer.',
+    'Hotspot': 'Hotspot',
+    'Domains': 'Alan adları',
+    'working · {}/{} opened': 'çalışıyor · {}/{} açıldı',
+    'broken · only {}/{} opened': 'bozuk · yalnızca {}/{} açıldı',
+    'not checked yet': 'henüz denetlenmedi',
+    '{} · saved: {}': '{} · kayıtlı: {}',
+    '{} · nothing saved yet': '{} · henüz kayıt yok',
+    '{} verified · {} waiting · {} manual · {} excluded': '{} doğrulanmış · {} bekleyen · {} elle · {} dışlanan',
+    "this computer's Wi-Fi card cannot broadcast a network": 'bu bilgisayarın Wi-Fi kartı ağ yayınlayamıyor',
+    'strategy health check': 'strateji sağlık denetimi',
+    'strategy watchdog': 'strateji nöbetçisi',
+    'watchdog action': 'nöbetçi davranışı',
+    'measure strategies': 'stratejileri ölç',
+    'save network profile': 'ağ profilini kaydet',
+    'start hotspot': 'hotspot başlat',
+    'stop hotspot': 'hotspot durdur',
     '{} domains waiting': '{} alan adı bekliyor',
     'nothing waiting': 'bekleyen yok',
     'audit every list': 'tüm listeleri denetle',
@@ -733,6 +773,9 @@ class Window(Adw.ApplicationWindow):
         self.stack.add_titled_with_icon(
             self._page_lists(), "lists", T("Lists"), "view-list-symbolic")
         self.stack.add_titled_with_icon(
+            self._page_health(), "health", T("Health"),
+            "emblem-important-symbolic")
+        self.stack.add_titled_with_icon(
             self._page_log(), "log", T("Log"), "utilities-terminal-symbolic")
 
         self.refresh()
@@ -978,6 +1021,204 @@ class Window(Adw.ApplicationWindow):
             page.add(group)
 
         return page
+
+    def _page_health(self):
+        """Teşhis / sağlık sayfası: stratejinin hâlâ çalışıp çalışmadığı,
+        aday stratejilerin ölçümü, ağ profili ve hotspot."""
+        page = Adw.PreferencesPage()
+
+        # --- Strateji sağlığı ---
+        g_health = Adw.PreferencesGroup(
+            title=T("Strategy health"),
+            description=T(
+                "Opens a few domains that were measured as blocked and checks "
+                "whether the current strategy still gets through"
+            ),
+        )
+        self.row_watchdog = Adw.ActionRow(title=T("Last check"), subtitle="—")
+        btn_wd = Gtk.Button(label=T("Check now"), valign=Gtk.Align.CENTER)
+        btn_wd.connect("clicked", lambda *_: self.run_privileged(
+            ["watchdog"], done=lambda *_: self.refresh(),
+            title=T("strategy health check")))
+        self.row_watchdog.add_suffix(btn_wd)
+        g_health.add(self.row_watchdog)
+
+        self.row_watchdog_timer = Adw.SwitchRow(
+            title=T("Keep watching"),
+            subtitle=T("Checks every 30 minutes and warns when it breaks"),
+        )
+        self.row_watchdog_timer.connect(
+            "notify::active", lambda *_: self.on_watchdog_timer_toggled())
+        g_health.add(self.row_watchdog_timer)
+
+        self.row_watchdog_action = Adw.ComboRow(
+            title=T("When it breaks"),
+            subtitle=T("Only warn, or search for a working strategy"),
+        )
+        self.row_watchdog_action.set_model(Gtk.StringList.new(
+            [T("Warn only"), T("Find a working strategy")]))
+        self.row_watchdog_action.connect(
+            "notify::selected", lambda *_: self.on_watchdog_action_changed())
+        g_health.add(self.row_watchdog_action)
+        page.add(g_health)
+
+        # --- Auto-tune ---
+        g_tune = Adw.PreferencesGroup(
+            title=T("Find the best strategy"),
+            description=T(
+                "Runs candidate strategies in a second engine on a separate "
+                "queue and measures them against sites that are actually "
+                "blocked. Your own connection keeps working meanwhile."
+            ),
+        )
+        row_tune = Adw.ActionRow(
+            title=T("Measure candidates"),
+            subtitle=T("Takes a few minutes"),
+        )
+        btn_tune = Gtk.Button(label=T("Measure"), valign=Gtk.Align.CENTER)
+        btn_tune.connect("clicked", lambda *_: self.on_tune(False))
+        row_tune.add_suffix(btn_tune)
+        btn_tune_apply = Gtk.Button(label=T("Measure and apply"),
+                                    valign=Gtk.Align.CENTER)
+        btn_tune_apply.add_css_class("suggested-action")
+        btn_tune_apply.connect("clicked", lambda *_: self.on_tune(True))
+        row_tune.add_suffix(btn_tune_apply)
+        g_tune.add(row_tune)
+        page.add(g_tune)
+
+        # --- Ağ profili ---
+        g_prof = Adw.PreferencesGroup(
+            title=T("This network"),
+            description=T(
+                "Home, mobile hotspot and a school network go through "
+                "different DPI. Save the strategy that works here and Unwall "
+                "restores it when you come back."
+            ),
+        )
+        self.row_profile = Adw.ActionRow(title=T("Network"), subtitle="—")
+        btn_prof_save = Gtk.Button(label=T("Save for this network"),
+                                   valign=Gtk.Align.CENTER)
+        btn_prof_save.connect("clicked", lambda *_: self.run_privileged(
+            ["profile", "save"], done=lambda *_: self.refresh(),
+            title=T("save network profile")))
+        self.row_profile.add_suffix(btn_prof_save)
+        g_prof.add(self.row_profile)
+        page.add(g_prof)
+
+        # --- Hotspot ---
+        g_hs = Adw.PreferencesGroup(
+            title=T("Wi-Fi hotspot"),
+            description=T(
+                "Broadcasts a Wi-Fi network from this computer so a console "
+                "or TV can join it without any manual IP settings — their "
+                "traffic goes through Unwall automatically."
+            ),
+        )
+        self.row_hotspot = Adw.SwitchRow(title=T("Hotspot"), subtitle="—")
+        self.row_hotspot.connect(
+            "notify::active", lambda *_: self.on_hotspot_toggled())
+        g_hs.add(self.row_hotspot)
+        page.add(g_hs)
+
+        # --- Listeler özeti ---
+        g_counts = Adw.PreferencesGroup(title=T("Lists"))
+        self.row_counts = Adw.ActionRow(title=T("Domains"), subtitle="—")
+        g_counts.add(self.row_counts)
+        page.add(g_counts)
+
+        return page
+
+    # -----------------------------------------------------------------
+    # sağlık sayfası: veri ve eylemler
+    # -----------------------------------------------------------------
+
+    def _refresh_health(self):
+        _, out = ctl("report", timeout=POLL_TIMEOUT)
+        r = parse_kv(out)
+        self.report = r
+
+        verdict = r.get("watchdog", "unknown")
+        ok, total = r.get("watchdog_ok", "0"), r.get("watchdog_total", "0")
+        if verdict == "ok":
+            text = T("working · {}/{} opened").format(ok, total)
+        elif verdict == "degraded":
+            text = T("broken · only {}/{} opened").format(ok, total)
+        else:
+            text = T("not checked yet")
+        self.row_watchdog.set_subtitle(text)
+
+        net = r.get("network", "—")
+        saved = r.get("profile_strategy") or ""
+        self.row_profile.set_subtitle(
+            T("{} · saved: {}").format(net, saved) if saved
+            else T("{} · nothing saved yet").format(net)
+        )
+
+        self.row_counts.set_subtitle(
+            T("{} verified · {} waiting · {} manual · {} excluded").format(
+                r.get("list_auto", "0"), r.get("list_pending", "0"),
+                r.get("list_manual", "0"), r.get("list_exclude", "0"))
+        )
+
+        capable = r.get("hotspot_capable") == "1"
+        self.row_hotspot.set_sensitive(capable)
+        if not capable:
+            self.row_hotspot.set_subtitle(
+                T("this computer's Wi-Fi card cannot broadcast a network"))
+        elif r.get("hotspot_active") == "1":
+            self.row_hotspot.set_subtitle(
+                T("on · {}").format(r.get("hotspot_ssid", "?")))
+        else:
+            self.row_hotspot.set_subtitle(T("off"))
+
+        self._loading = True
+        try:
+            self.row_watchdog_timer.set_active(
+                r.get("timer_watchdog") == "enabled")
+            self.row_hotspot.set_active(r.get("hotspot_active") == "1")
+            self.row_watchdog_action.set_selected(
+                1 if r.get("watchdog_action") == "tune" else 0)
+        finally:
+            self._loading = False
+
+    def on_tune(self, apply_it):
+        args = ["tune"]
+        if apply_it:
+            args.append("--apply")
+        self.toast(T("Measuring — this takes a few minutes"))
+        self.run_privileged(
+            args, done=lambda *_: self.refresh(),
+            title=T("measure strategies"))
+
+    def on_watchdog_timer_toggled(self):
+        if self._loading:
+            return
+        want = self.row_watchdog_timer.get_active()
+        self.run_privileged(
+            ["watchdog-timer", "on" if want else "off"],
+            done=lambda *_: self.refresh(), title=T("strategy watchdog"))
+
+    def on_watchdog_action_changed(self):
+        if self._loading:
+            return
+        action = "tune" if self.row_watchdog_action.get_selected() == 1 else "notify"
+        self.run_privileged(
+            ["config", "set", f"WATCHDOG_ACTION={action}"],
+            done=lambda *_: self.refresh(), title=T("watchdog action"))
+
+    def on_hotspot_toggled(self):
+        if self._loading:
+            return
+        if self.row_hotspot.get_active():
+            # SSID/parola çıktıya basılıyor; kullanıcı Günlük sayfasından
+            # okuyup cihaza girecek.
+            self.run_privileged(["hotspot", "on"],
+                                done=lambda *_: self.refresh(),
+                                title=T("start hotspot"))
+        else:
+            self.run_privileged(["hotspot", "off"],
+                                done=lambda *_: self.refresh(),
+                                title=T("stop hotspot"))
 
     def _filter_lists(self):
         """Arama kutusundaki metni TÜM listede (yalnızca çizilmiş
@@ -1396,6 +1637,7 @@ class Window(Adw.ApplicationWindow):
         self.row_autostart.set_active(self.status.get("enabled") == "1")
         self._refresh_dns()
         self._refresh_verify()
+        self._refresh_health()
         self._loading = False
 
         running = self.status.get("running") == "1"

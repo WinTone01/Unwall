@@ -205,7 +205,13 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `unwallctl print-cmd`, `print-nft` | show the generated command and rules |
 | `unwallctl conncheck [domains]` | try a real TLS handshake against a few targets |
 | `sudo unwallctl verify [--all]` | measure learned domains and verify them (drops false positives) |
+| `sudo unwallctl prune` | drop list entries whose domain no longer resolves |
 | `sudo unwallctl verify-timer on\|off` | turn periodic verification on / off |
+| `sudo unwallctl tune [--apply]` | measure candidate strategies against sites that are really blocked |
+| `sudo unwallctl watchdog` | measure whether the strategy still works |
+| `unwallctl profile show\|save\|apply` | per-network strategy profile |
+| `sudo unwallctl hotspot on\|off` | broadcast a Wi-Fi network for a console / TV |
+| `unwallctl report` | the whole state in one command (the GUI's Health page reads this) |
 | `unwallctl blockcheck-results [engine]` | list every working strategy from the last blockcheck |
 | `unwallctl update-check` | check GitHub for a newer release (key=value) |
 | `sudo unwallctl self-update [version]` | download and install a release (defaults to latest) |
@@ -245,7 +251,36 @@ Since v1.5, learned domains no longer go straight into the permanent list:
 | `false-positive` | opens fine without the bypass | removed (a second clearing from quarantine also adds it to the exclude list) |
 | `blocked` | closed without the bypass, open with it | promoted to the permanent list |
 | `still-blocked` | closed both ways, signature looks like interference | kept — **the block is real but the strategy does not beat it** |
-| `unreachable` | closed both ways, signature does not look like DPI | removed (dead host) |
+| `not-dpi` | host is alive, but the problem is its certificate / TLS setup | removed (desync cannot fix that) |
+| `invalid` | the name does not resolve at all | removed |
+| `unreachable` | dead host (not even a bare TCP connection to 443) | removed |
+| `skipped-ip` | raw IP entry | left alone |
+
+The distinction comes from `curl`'s exit code, and getting it right matters
+more than it sounds: a WebSocket endpoint (`ws-eu.pusher.com`) answers **HTTP
+426** and then closes the stream, and a live host whose certificate does not
+match the name fails TLS — neither of those is "blocked". A probe counts as
+successful the moment the server returns any HTTP status; a TLS cut
+(`35/52/56`) is read as interference, while certificate errors
+(`51/58/59/60/…`) mean a live host. On a timeout, a bare TCP connection to 443
+decides it: if that succeeds the host is alive and the cut happens during the
+handshake.
+
+### Pruning invalid domains
+
+Lists collect junk over time: expired names, temporary CDN hostnames, typos.
+This clears them without any DPI measurement, by asking only whether the name
+exists:
+
+```bash
+sudo unwallctl prune
+```
+
+The question goes to Cloudflare DoH over 443/TLS, not to the ISP's DNS — asking
+in plaintext would make **every** domain look gone on a network that poisons
+DNS, and wipe the list. Nothing is removed when DoH cannot be reached. Only the
+lists the engine populates are touched; `hostlist.txt` and `excludelist.txt`
+are yours.
 
 ```bash
 sudo unwallctl verify          # verify what is in quarantine
@@ -392,6 +427,101 @@ In the manual network settings of the device (PlayStation, Xbox, Switch, TV):
 > `# unwall dns redirect` comment) and removes it when gateway mode is
 > turned off. `doctor` warns under "ağ geçidi DNS" if the rule is in place
 > but the allowance is missing.
+
+## Self-tuning (v2.0)
+
+Whether a strategy works is not something to guess, it is something to
+measure. All four v2.0 features share the same measurement plumbing: the
+traffic of a dedicated `unwall-probe` user is marked with the engine's
+fwmark, the queue rules skip marked packets, and so a "without the bypass"
+connection can be made without touching any rules.
+
+### Finding the best strategy
+
+```bash
+sudo unwallctl tune            # measure and suggest
+sudo unwallctl tune --apply    # measure and apply the winner
+sudo unwallctl tune --deep     # wider parameter search
+```
+
+Unlike `blockcheck`, this **never disturbs your own connection**: the
+candidate runs in a second engine instance on its own queue (`QNUM+1`), and
+only the probe user's traffic is routed there. You keep browsing on the
+current strategy while it runs.
+
+The test set is measured too: a sample is taken from your verified list and
+only the domains that are **actually blocked right now** are kept. The
+candidates are the ready-made profiles plus a parameter grid (fake packet
+TTL and split method), deduplicated by arguments. The search stops as soon
+as a candidate passes everything, and no candidate is tried at all if the
+current strategy already does.
+
+A winner that came from the grid is stored as `STRATEGY=analiz` plus
+`CUSTOM_ARGS`.
+
+### Per-network profiles
+
+Home, a mobile hotspot and a school network go through different DPI. Save
+the strategy that works on one, and it comes back when you return.
+
+```bash
+unwallctl profile show     # this network's fingerprint and saved profile
+sudo unwallctl profile save
+unwallctl profile list
+```
+
+The fingerprint is the Wi-Fi SSID, else the default gateway's MAC address,
+else the router IP. When the network changes, a NetworkManager dispatcher
+hook (`/etc/NetworkManager/dispatcher.d/90-unwall`) calls `profile apply
+--auto`, which does nothing when that network has no saved profile.
+
+### The watchdog
+
+A strategy can stop working overnight - the ISP updates its DPI and the user
+experiences it as "the internet broke". The watchdog opens a few domains
+that were **measured** as blocked and checks whether the current strategy
+still gets through.
+
+```bash
+sudo unwallctl watchdog            # check now
+sudo unwallctl watchdog-timer on   # check every 30 minutes
+```
+
+If fewer than half open, the strategy counts as broken (a single failure can
+just be that site, hence the ratio). With `WATCHDOG_ACTION=tune` it runs
+auto-tune and applies the winner; the default `notify` only reports, to the
+GUI's Health page and `journalctl -u unwall-watchdog`.
+
+### Hotspot (AP mode)
+
+If your wireless card supports AP mode, a console does not need any manual
+IP settings at all: the machine broadcasts its own Wi-Fi network and the
+device simply joins it.
+
+```bash
+sudo unwallctl hotspot on            # SSID: Unwall, a password is generated and printed
+sudo unwallctl hotspot on MyNet yourpassword
+sudo unwallctl hotspot status
+```
+
+DHCP and DNS come from NetworkManager's "shared" mode (dnsmasq); Unwall only
+turns on the gateway rules. If your card cannot be a client and an access
+point at the same time and your internet arrives on that same card, the
+connection may drop - the command warns about this first.
+
+### The Health page
+
+The new **Health** tab in the GUI shows all of it in one place: the last
+watchdog check, a "Measure and apply" button, this network's profile, the
+hotspot switch and the list counts. The same data is available from the
+terminal with `unwallctl report`.
+
+> [!NOTE]
+> In gateway mode a device's IPv6 comes straight from the router and never
+> passes through this machine - so it bypasses Unwall. If a blocked site is
+> reachable over IPv6, turn IPv6 off on the device. For this machine's own
+> IPv6 traffic, `ENABLE_IPV6=1` is enough.
+
 
 ## Differences from the Windows version
 

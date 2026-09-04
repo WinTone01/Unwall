@@ -178,3 +178,108 @@ LOG
   [ "$(cleared_bump other.com)" = "1" ]
   [ "$(cleared_count example.com)" = "2" ]
 }
+
+# --- ag basina profil (v2.0) ---
+
+@test "profile_put/profile_get bos CUSTOM_ARGS ile alanlari kaydirmaz" {
+  load_fn profile_put
+  load_fn profile_get
+  PROFILE_DB="$BATS_TEST_TMPDIR/profiles.tsv"
+  # 4. alan (CUSTOM_ARGS) bos: sekme "IFS boslugu" oldugu icin
+  # IFS=$'\t' read bunu yutup hostlist alanina zaman damgasi koyuyordu.
+  profile_put "gw:aa:bb" zapret2 kablonet "" auto
+  line="$(profile_get "gw:aa:bb")"
+  [ "$(printf '%s' "$line" | cut -f2)" = "zapret2" ]
+  [ "$(printf '%s' "$line" | cut -f3)" = "kablonet" ]
+  [ "$(printf '%s' "$line" | cut -f4)" = "" ]
+  [ "$(printf '%s' "$line" | cut -f5)" = "auto" ]
+}
+
+@test "profile_put ayni ag icin ikinci kayitta uzerine yazar" {
+  load_fn profile_put
+  load_fn profile_get
+  PROFILE_DB="$BATS_TEST_TMPDIR/profiles.tsv"
+  profile_put "gw:aa" zapret2 kablonet "" auto
+  profile_put "gw:aa" zapret2 vodafone "" manual
+  profile_put "gw:bb" zapret2 turk-telekom "" auto
+  [ "$(grep -c . "$PROFILE_DB")" -eq 2 ]
+  [ "$(profile_get "gw:aa" | cut -f3)" = "vodafone" ]
+  [ "$(profile_get "gw:bb" | cut -f3)" = "turk-telekom" ]
+}
+
+@test "profile_get olmayan agda basarisiz doner" {
+  load_fn profile_get
+  PROFILE_DB="$BATS_TEST_TMPDIR/yok.tsv"
+  run profile_get "gw:zz"
+  [ "$status" -ne 0 ]
+}
+
+# --- auto-tune aday uretimi ---
+
+@test "tune_candidates ayni argumanlari tekrar etmez" {
+  load_fn tune_candidates
+  ENGINE=zapret2
+  STRATEGY_FILE="$BATS_TEST_TMPDIR/strategies.conf"
+  cat > "$STRATEGY_FILE" <<'CONF'
+# yorum satiri atlanmali
+zapret2|a|A|--x=1|A
+zapret2|b|B|--x=1|B
+zapret2|c|C|--x=2|C
+zapret|d|D|--x=1|D
+CONF
+  run tune_candidates
+  [ "$(printf '%s\n' "$output" | wc -l)" -eq 2 ]
+  printf '%s\n' "$output" | grep -q '^a	--x=1$'
+  printf '%s\n' "$output" | grep -q '^c	--x=2$'
+  # baska motorun profili gelmemeli
+  ! printf '%s\n' "$output" | grep -q '^d'
+}
+
+@test "tune_grid deep modda daha genis TTL araligi dener" {
+  load_fn tune_grid
+  ENGINE=zapret2
+  n_normal="$(tune_grid 0 | wc -l)"
+  n_deep="$(tune_grid 1 | wc -l)"
+  [ "$n_deep" -gt "$n_normal" ]
+  # her satir "kimlik<TAB>argumanlar" olmali
+  tune_grid 0 | while IFS=$'\t' read -r id args; do
+    [ -n "$id" ]
+    case "$args" in --*) ;; *) return 1 ;; esac
+  done
+}
+
+@test "tune_all_candidates hazir profil ile ayni argumani ikinci kez denemez" {
+  load_fn tune_candidates
+  load_fn tune_grid
+  load_fn tune_all_candidates
+  ENGINE=zapret2
+  STRATEGY_FILE="$BATS_TEST_TMPDIR/strategies.conf"
+  # izgaranin uretecegi bir aday ile birebir ayni argumanlar
+  printf 'zapret2|hazir|H|--payload=tls_client_hello --lua-desync=multidisorder:pos=1:seqovl=1|H\n' \
+    > "$STRATEGY_FILE"
+  run tune_all_candidates 0
+  [ "$(printf '%s\n' "$output" | grep -c 'multidisorder:pos=1:seqovl=1')" -eq 1 ]
+  # ve o satir hazir profilin kimligiyle gelmeli (once o okunuyor)
+  printf '%s\n' "$output" | grep -q '^hazir	'
+}
+
+# --- probe siniflandirmasi (v2.0) ---
+
+@test "curl_class DPI imzasini sertifika hatasindan ayirir" {
+  load_fn curl_class
+  # TLS/baglanti araya girilerek koptu -> DPI imzasi
+  [ "$(curl_class 35)" = "cut" ]
+  [ "$(curl_class 56)" = "cut" ]
+  [ "$(curl_class 52)" = "cut" ]
+  # sertifika sorunu: host canli, araya giren yok
+  [ "$(curl_class 60)" = "cert" ]
+  [ "$(curl_class 51)" = "cert" ]
+  [ "$(curl_class 77)" = "cert" ]
+  # ad cozulemedi / host olu
+  [ "$(curl_class 6)"  = "nodns" ]
+  [ "$(curl_class 7)"  = "dead" ]
+  [ "$(curl_class 28)" = "dead" ]
+  # bilinmeyen kod DPI sayilmaz
+  [ "$(curl_class 47)" = "other" ]
+  [ "$(curl_class 0)"  = "other" ]
+}

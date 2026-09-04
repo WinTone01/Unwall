@@ -1,6 +1,6 @@
 # Maintainer: WinTone01 <wintone01@users.noreply.github.com>
 pkgname=unwall
-pkgver=1.5.0
+pkgver=2.0.0
 pkgrel=1
 pkgdesc="GTK4 control panel for the zapret/nfqws DPI bypass engine"
 arch=('any')
