@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.4.2
+Version:        1.4.3
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -161,6 +161,10 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Thu Sep 04 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.4.3-1
+- Status page fits in the window again (compact hero, single-line value rows) and the Lists page no longer renders hundreds of rows: lists are collapsible, capped, and searchable across the full list.
+- New: connection test button, notification when hostlist-auto learns a domain, a chooser for every working strategy blockcheck found, and a one-time explanation that closing the window does not stop protection.
+- ASN -> strategy mapping moved from the code into lib/strategies.conf so new countries need no code change; added bats unit tests and a CI job for them.
 * Tue Sep 01 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.4.2-1
 - Fix gateway mode never redirecting LAN devices' DNS: the rule matched "iifname != WAN", which never holds on a single-NIC machine where the console sits on the same network, so console queries went straight to the ISP on port 53 - fatal on Türk Telekom / TT Mobil, which answer every port 53 packet themselves. Queries are now matched by (private) source address instead.
 - Fix the redirect target: it pointed at whatever /etc/resolv.conf said, usually systemd-resolved's 127.0.0.53 stub, which only answers queries from local addresses and silently drops DNAT'ed LAN packets. The target is now dnscrypt-proxy's 127.0.0.1:5300 when DoH is on, or a dedicated DNSStubListenerExtra listener on the LAN address otherwise; when neither can be set up, no redirect rule is installed instead of black-holing DNS.

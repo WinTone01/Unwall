@@ -202,6 +202,8 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `unwallctl doctor` | ortam / çakışma teşhisi |
 | `sudo unwallctl disable-conflicts` | çakışan DPI araçlarını kapat |
 | `unwallctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
+| `unwallctl conncheck [domainler]` | birkaç hedefe gerçek TLS el sıkışması dener |
+| `unwallctl blockcheck-results [motor]` | son blockcheck'teki tüm çalışan stratejileri listeler |
 | `unwallctl update-check` | GitHub'da yeni sürüm var mı bak (key=value) |
 | `sudo unwallctl self-update [sürüm]` | bir sürümü indirip kur (varsayılan: en son) |
 

@@ -203,6 +203,8 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `unwallctl doctor` | environment and conflict diagnostics |
 | `sudo unwallctl disable-conflicts` | shut down conflicting DPI tools |
 | `unwallctl print-cmd`, `print-nft` | show the generated command and rules |
+| `unwallctl conncheck [domains]` | try a real TLS handshake against a few targets |
+| `unwallctl blockcheck-results [engine]` | list every working strategy from the last blockcheck |
 | `unwallctl update-check` | check GitHub for a newer release (key=value) |
 | `sudo unwallctl self-update [version]` | download and install a release (defaults to latest) |
 

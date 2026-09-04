@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.4.2"
+VERSION="1.4.3"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -870,10 +870,16 @@ cmd_status() {
 	nft list table ip "$NFT_TABLE" >/dev/null 2>&1 && nft_ok=1
 	nft list table inet "$NFT_TABLE" >/dev/null 2>&1 && nft_ok=1
 
-	printf 'version=%s\nengine=%s\nstrategy=%s\nhostlist=%s\ngateway=%s\nrunning=%s\nenabled=%s\npid=%s\nnft=%s\nengine_ready=%s\n' \
+	local auto_count=0
+	if [ -r "$UW_ETC/autohostlist.txt" ]; then
+		auto_count="$(grep -cve '^[[:space:]]*$' -e '^[[:space:]]*#' \
+			"$UW_ETC/autohostlist.txt" 2>/dev/null || printf '0')"
+	fi
+
+	printf 'version=%s\nengine=%s\nstrategy=%s\nhostlist=%s\ngateway=%s\nrunning=%s\nenabled=%s\npid=%s\nnft=%s\nengine_ready=%s\nauto_count=%s\n' \
 		"$VERSION" "$ENGINE" "$STRATEGY" "$HOSTLIST_MODE" "$GATEWAY_MODE" \
 		"$running" "$enabled" "${pid:-0}" "$nft_ok" \
-		"$([ -x "$(engine_bin)" ] && echo 1 || echo 0)"
+		"$([ -x "$(engine_bin)" ] && echo 1 || echo 0)" "$auto_count"
 }
 
 # =====================================================================
@@ -1260,15 +1266,19 @@ detect_public_ip() {
 #   15897 Vodafone Türkiye
 #   47524 Türksat / Kablonet (kablo)
 #   12735 TurkNet (kendine özel preset yok, genel profile düşer)
+# ASN -> strateji kimliği. Eşleme lib/strategies.conf içinde
+# "asn|<numara>|<strateji>" satırlarında durur; böylece yeni bir ülke
+# eklemek için kod değil yalnızca o dosya düzenlenir (bkz. CONTRIBUTING).
 asn_to_strategy() {
-	case "$1" in
-	9121)  printf 'turk-telekom' ;;
-	34984) printf 'superonline' ;;
-	16135) printf 'turkcell-mobil' ;;
-	15897) printf 'vodafone' ;;
-	47524) printf 'kablonet' ;;
-	*)     printf '' ;;
-	esac
+	local want="$1" kind num id
+	[ -r "$STRATEGY_FILE" ] || return 0
+	while IFS='|' read -r kind num id _; do
+		[ "$kind" = "asn" ] || continue
+		[ "$num" = "$want" ] || continue
+		printf '%s' "$id"
+		return 0
+	done < "$STRATEGY_FILE"
+	printf ''
 }
 
 # Genel IP -> ASN -> operatör -> önerilen strateji.
@@ -1629,6 +1639,71 @@ cmd_build() {
 # Blockcheck
 # =====================================================================
 
+# parse_blockcheck yalnızca son bulunanı döndürür; bu ise loglanan
+# BÜTÜN çalışan stratejileri (tekrarları eleyerek) sırayla yazar.
+# Arayüz bunu "hangisini uygulayayım?" listesi olarak gösteriyor.
+parse_blockcheck_all() {
+	local log="$1" eng="$2"
+	local pat='nfqws'
+	[ "$eng" = "zapret2" ] && pat='nfqws2'
+	awk -v pat="$pat" '
+		index($0, pat) { last = $0 }
+		/AVAILABLE/ && last != "" { print last; last = "" }
+	' "$log" 2>/dev/null |
+	sed -E "s/.*${pat}[^ ]*[[:space:]]+//" |
+	sed -E 's/--qnum=[^ ]*//g; s/--filter-(tcp|udp)=[^ ]*//g; s/--hostlist[^ ]*//g; s/--daemon//g; s/--pidfile=[^ ]*//g; s/^[[:space:]]+//; s/[[:space:]]+$//' |
+	awk 'NF && !seen[$0]++'
+}
+
+# Son blockcheck kaydındaki çalışan stratejileri listeler. Yeniden
+# tarama yapmaz; yalnızca mevcut logu okur, bu yüzden root gerektirmez.
+cmd_blockcheck_results() {
+	load_config
+	local eng="${1:-$ENGINE}" log
+	case "$eng" in
+	zapret2) log="$UW_LOG/blockcheck2.log" ;;
+	zapret)  log="$UW_LOG/blockcheck.log" ;;
+	*) die "$(t 'invalid engine'): $eng" ;;
+	esac
+	if [ ! -r "$log" ]; then
+		printf 'result=none\nreason=%s\n' "$log"
+		return 0
+	fi
+	local n=0 line
+	while IFS= read -r line; do
+		[ -n "$line" ] || continue
+		n=$((n + 1))
+		printf 'strategy%s=%s\n' "$n" "$line"
+	done <<-EOF
+	$(parse_blockcheck_all "$log" "$eng")
+	EOF
+	printf 'result=ok\ncount=%s\nengine=%s\nlog=%s\n' "$n" "$eng" "$log"
+}
+
+# Bir avuç hedefe gerçek TLS el sıkışması deneyip sonucu bildirir.
+# "Şu an gerçekten çalışıyor mu?" sorusunun tek tıkla cevabı.
+cmd_conncheck() {
+	load_config
+	command -v curl >/dev/null 2>&1 || die "$(t 'curl is required')"
+	local targets="$*"
+	[ -n "$targets" ] || targets="discord.com roblox.com www.roblox.com"
+	local d ok=0 total=0 code
+	for d in $targets; do
+		total=$((total + 1))
+		set +e
+		curl -sS -o /dev/null --max-time 8 --retry 0 "https://$d/" 2>/dev/null
+		code=$?
+		set -e
+		if [ "$code" -eq 0 ]; then
+			ok=$((ok + 1))
+			printf '%s\tok\t0\n' "$d"
+		else
+			printf '%s\tfail\t%s\n' "$d" "$code"
+		fi
+	done
+	printf 'result=ok\npassed=%s\ntotal=%s\n' "$ok" "$total"
+}
+
 cmd_blockcheck() {
 	need_root
 	load_config
@@ -1950,6 +2025,8 @@ main() {
 	blockcheck)   cmd_blockcheck "$@" ;;
 	dnscheck)     cmd_dnscheck "$@" ;;
 	detect-isp)   cmd_detect_isp ;;
+	blockcheck-results) cmd_blockcheck_results "$@" ;;
+	conncheck)    cmd_conncheck "$@" ;;
 	hostlist)     cmd_hostlist "$@" ;;
 	dns)          cmd_dns "$@" ;;
 	doctor)       cmd_doctor ;;

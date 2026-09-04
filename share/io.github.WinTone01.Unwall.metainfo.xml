@@ -59,6 +59,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.4.3" date="2026-09-04">
+      <description>
+        <p>The Status page fits in the window again and the Lists page is collapsible, capped and searchable instead of rendering hundreds of rows.</p>
+        <p>Added a connection test, a notification when a domain is auto-learned, a chooser for every working strategy blockcheck found, and a one-time note that closing the window does not stop protection.</p>
+      </description>
+    </release>
     <release version="1.4.2" date="2026-09-01">
       <description>
         <p>Fixed gateway mode never actually redirecting the DNS queries of LAN devices (consoles, TVs): the rule only matched packets arriving on an interface other than the WAN one, which never happens on the usual single-NIC setup, and it pointed at systemd-resolved's 127.0.0.53 stub, which ignores queries coming from anywhere but the local machine. Queries are now matched by source address and sent to dnscrypt-proxy when DoH is on, or to a dedicated resolved listener on the LAN address otherwise.</p>

@@ -19,10 +19,10 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gtk, Pango  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.4.2"
+VERSION = "1.4.3"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -211,6 +211,24 @@ TR = {
     'Looks up your ASN over encrypted DNS and suggests a profile': 'ASN bilginizi şifreli DNS üzerinden sorgulayıp profil önerir',
     'Detect': 'Algıla',
     'Carrier': 'Operatör',
+    'Test connection': 'Bağlantıyı sına',
+    'connection test': 'bağlantı sınaması',
+    '{} of {} targets reachable': '{}/{} hedefe erişilebiliyor',
+    'Last blockcheck results': 'Son blockcheck sonuçları',
+    'Working strategies': 'Çalışan stratejiler',
+    'Blockcheck found {} working strategies. Pick one to apply.': 'Blockcheck {} çalışan strateji buldu. Uygulamak için birini seçin.',
+    'No blockcheck results yet; run the ISP analysis first.': 'Henüz blockcheck sonucu yok; önce ISS analizini çalıştırın.',
+    'apply blockcheck result': 'blockcheck sonucunu uygula',
+    'Apply': 'Uygula',
+    'hostlist-auto learned {} new domain(s)': 'hostlist-auto {} yeni domain öğrendi',
+    'Unwall keeps running': 'Unwall çalışmaya devam ediyor',
+    'The engine runs as a system service, so closing this window does not stop the protection. To stop it, press STOP on the Status page (or run: sudo unwallctl stop).': 'Motor bir sistem servisi olarak çalışıyor; bu pencereyi kapatmak korumayı durdurmaz. Durdurmak için Durum sayfasındaki DURDUR düğmesini kullanın (ya da: sudo unwallctl stop).',
+    'Got it': 'Anladım',
+    'Search in lists': 'Listelerde ara',
+    '{} domains': '{} domain',
+    '{} of {} domains': '{} / {} domain',
+    '… and {} more': '… ve {} tane daha',
+    'use the search box above to find them': 'bulmak için yukarıdaki arama kutusunu kullanın',
     'not detected yet': 'henüz algılanmadı',
     'off': 'kapalı',
     'on · {}': 'açık · {}',
@@ -295,6 +313,12 @@ ENGINES = [
 
 # "Listeler" sayfasındaki gruplar; kimlikler `unwallctl hostlist` komutunun
 # beklediği adlarla birebir aynı olmalı.
+# Auto listesi zamanla yüzlerce domaine ulaşabiliyor (test makinesinde
+# 478). Hepsini birden widget'a çevirmek hem yavaş hem de sayfayı
+# metrelerce uzatıyor; bir seferde en fazla bu kadarını çiziyoruz,
+# gerisine arama kutusundan ulaşılıyor.
+LIST_PAGE_SIZE = 60
+
 LIST_TARGETS = [
     ("manual", T("Manual list (hostlist.txt)")),
     ("auto", T("Auto-learned (autohostlist.txt)")),
@@ -414,9 +438,23 @@ def parse_kv(text):
 
 
 class Window(Adw.ApplicationWindow):
+    CSS = b"""
+    .uw-value { font-family: monospace; }
+    .uw-on    { color: @success_color; }
+    .uw-off   { color: alpha(currentColor, 0.55); }
+    .uw-warn  { color: @warning_color; }
+    .uw-err   { color: @error_color; }
+    .uw-hero  { margin-bottom: 2px; }
+    """
+
     def __init__(self, app):
         super().__init__(application=app, title=T("Unwall"))
-        self.set_default_size(520, 760)
+        self.set_default_size(520, 800)
+        provider = Gtk.CssProvider()
+        provider.load_from_data(self.CSS)
+        Gtk.StyleContext.add_provider_for_display(
+            self.get_display(), provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.status = {}
         self.config = {}
         self.strategies = []
@@ -429,6 +467,7 @@ class Window(Adw.ApplicationWindow):
         # Ağ parmak izi: değiştiğinde (başka bir Wi-Fi'ye geçmek gibi)
         # operatör yeniden algılanır - bkz. _refresh().
         self._netfp = None
+        self._auto_count = None
         # Kullanıcı bir seçim değiştirip henüz uygulamadıysa, periyodik durum
         # yenilemesi kontrolleri config'teki eski değerlere geri çevirmesin.
         self._dirty = False
@@ -443,6 +482,7 @@ class Window(Adw.ApplicationWindow):
         toolbar.add_top_bar(header)
 
         menu = Gio.Menu()
+        menu.append(T("Last blockcheck results"), "win.bc-results")
         menu.append(T("Diagnostics"), "win.doctor")
         menu.append(T("DNS check"), "win.dnscheck")
         menu.append(T("Build / update engines"), "win.build")
@@ -462,6 +502,7 @@ class Window(Adw.ApplicationWindow):
         header.pack_start(btn_refresh)
 
         for name, cb in (
+            ("bc-results", self.on_blockcheck_results),
             ("doctor", self.on_doctor),
             ("dnscheck", self.on_dnscheck),
             ("build", self.on_build),
@@ -686,24 +727,89 @@ class Window(Adw.ApplicationWindow):
     # sayfalar
     # -----------------------------------------------------------------
 
+    # -----------------------------------------------------------------
+    # arka planda çalışma
+    # -----------------------------------------------------------------
+    #
+    # Bilerek sistem tepsisi ikonu yok: GTK4'te yerleşik tepsi API'si
+    # bulunmuyor ve AppIndicator GTK3 menüsü istediği için bu süreçten
+    # kullanılamıyor (kalan tek yol SNI'yi elle D-Bus üzerinden yayınlamak
+    # ki GNOME'da eklentisiz çalışmıyor). Zaten motor systemd servisi
+    # olarak çalıştığından arayüzü kapatmak korumayı durdurmuyor; asıl
+    # sorun kullanıcının bunu bilmemesiydi, onu da aşağıdaki tek seferlik
+    # açıklama çözüyor.
+
+    def _on_close_request(self, *_a):
+        """Pencere kapanırken korumanın devam ettiğini bir kez açıkla.
+        Motor systemd servisi; arayüzü kapatmak onu durdurmaz."""
+        if self.status.get("running") != "1":
+            return False
+        if self._load_flag("close_notice_seen"):
+            return False
+        self._save_flag("close_notice_seen", True)
+
+        heading = T("Unwall keeps running")
+        body = T(
+            "The engine runs as a system service, so closing this window "
+            "does not stop the protection. To stop it, press STOP on the "
+            "Status page (or run: sudo unwallctl stop)."
+        )
+        if hasattr(Adw, "AlertDialog"):
+            dlg = Adw.AlertDialog(heading=heading, body=body)
+            dlg.add_response("ok", T("Got it"))
+            dlg.connect("response", lambda *_x: self.close())
+            dlg.present(self)
+        else:
+            dlg = Adw.MessageDialog(transient_for=self, heading=heading, body=body)
+            dlg.add_response("ok", T("Got it"))
+            dlg.connect("response", lambda *_x: self.close())
+            dlg.present()
+        return True  # bu seferlik kapatmayı durdur, kullanıcı onaylayınca kapanır
+
+    def _load_flag(self, name):
+        try:
+            with open(CONFIG_FILE) as fh:
+                for line in fh:
+                    if line.startswith(name + "="):
+                        return line.split("=", 1)[1].strip() == "1"
+        except OSError:
+            pass
+        return False
+
+    def _save_flag(self, name, value):
+        """gui.conf'a küçük bir bayrak yazar (dil ayarını bozmadan)."""
+        lines = []
+        try:
+            with open(CONFIG_FILE) as fh:
+                lines = [ln for ln in fh if not ln.startswith(name + "=")]
+        except OSError:
+            pass
+        lines.append(f"{name}={'1' if value else '0'}\n")
+        try:
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            with open(CONFIG_FILE, "w") as fh:
+                fh.writelines(lines)
+        except OSError as exc:
+            log.debug("could not save flag %s: %s", name, exc)
+
     def _clamped(self, child):
         """Geniş ekranda satırlar okunamayacak kadar uzamasın."""
         clamp = Adw.Clamp(maximum_size=680, child=child)
         return Gtk.ScrolledWindow(child=clamp, vexpand=True)
 
     def _page_status(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18,
-                      margin_top=24, margin_bottom=24,
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                      margin_top=18, margin_bottom=18,
                       margin_start=12, margin_end=12)
 
         # İkon + üstünde dönen gösterge: bir işlem sürerken ikonun yerini
         # almak yerine üstüne biniyor, böylece yer değişmiyor.
-        icon = Gtk.Image(icon_name=APP_ID, pixel_size=112,
+        icon = Gtk.Image(icon_name=APP_ID, pixel_size=96,
                          halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         self.status_spinner = Gtk.Spinner(
-            width_request=112, height_request=112,
+            width_request=96, height_request=96,
             halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, visible=False)
-        overlay = Gtk.Overlay(width_request=112, height_request=112,
+        overlay = Gtk.Overlay(width_request=96, height_request=96,
                               halign=Gtk.Align.CENTER)
         overlay.set_child(icon)
         overlay.add_overlay(self.status_spinner)
@@ -711,6 +817,7 @@ class Window(Adw.ApplicationWindow):
 
         self.lbl_state = Gtk.Label(label=T("CHECKING…"), halign=Gtk.Align.CENTER)
         self.lbl_state.add_css_class("title-1")
+        self.lbl_state.add_css_class("uw-hero")
         box.append(self.lbl_state)
 
         self.lbl_sub = Gtk.Label(label="", halign=Gtk.Align.CENTER, wrap=True,
@@ -725,12 +832,22 @@ class Window(Adw.ApplicationWindow):
         self.btn_main.connect("clicked", self.on_main_clicked)
         box.append(self.btn_main)
 
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                          halign=Gtk.Align.CENTER)
+        self.btn_conncheck = Gtk.Button(label=T("Test connection"))
+        self.btn_conncheck.connect("clicked", self.on_conncheck)
+        actions.append(self.btn_conncheck)
+        box.append(actions)
+
         self.progress = Gtk.ProgressBar(visible=False)
         box.append(self.progress)
 
         # Özet bilgiler: monospace alt başlıklı "property" satırları.
+        # Değerler sağda, tek satırda: altbaşlıklı iki satırlık satırlar
+        # altı satırda ~70px fazla yer kaplıyordu ve pencereye sığmıyordu.
         g_info = Adw.PreferencesGroup(title=T("Connection"))
         self.info_rows = {}
+        self.info_values = {}
         for key, title in (
             ("carrier", T("Carrier")),
             ("engine", T("Engine")),
@@ -739,13 +856,28 @@ class Window(Adw.ApplicationWindow):
             ("dns", T("Encrypted DNS")),
             ("gateway", T("Gateway mode")),
         ):
-            row = Adw.ActionRow(title=title, subtitle="—")
-            row.add_css_class("property")
+            row = Adw.ActionRow(title=title)
+            value = Gtk.Label(label="—", xalign=1.0, valign=Gtk.Align.CENTER,
+                              ellipsize=Pango.EllipsizeMode.MIDDLE,
+                              max_width_chars=28)
+            value.add_css_class("dim-label")
+            value.add_css_class("uw-value")
+            row.add_suffix(value)
             self.info_rows[key] = row
+            self.info_values[key] = value
             g_info.add(row)
         box.append(g_info)
 
         return self._clamped(box)
+
+    def _set_info(self, key, text, state=""):
+        """Bilgi satırının değerini yazar. state: '' | 'on' | 'off' | 'warn'"""
+        label = self.info_values[key]
+        label.set_text(text)
+        for cls in ("uw-on", "uw-off", "uw-warn", "uw-err"):
+            label.remove_css_class(cls)
+        if state:
+            label.add_css_class("uw-" + state)
 
     def _page_lists(self):
         page = Adw.PreferencesPage()
@@ -774,16 +906,90 @@ class Window(Adw.ApplicationWindow):
         self.entry_domain.add_suffix(btn_add)
         g_add.add(self.entry_domain)
 
-        # Her liste için ayrı grup; içerikleri _refresh_lists() dolduruyor.
+        # Listeler uzun olabiliyor (auto listesi zamanla onlarca domain
+        # topluyor). Hepsini düz satır olarak basmak sayfayı metrelerce
+        # uzatıyordu; bunun yerine her liste katlanabilir tek bir satır ve
+        # üstte tüm listelerde arama yapan bir alan var.
+        g_search = Adw.PreferencesGroup()
+        self.entry_search = Adw.EntryRow(title=T("Search in lists"))
+        self.entry_search.connect("changed", lambda *_: self._filter_lists())
+        g_search.add(self.entry_search)
+        page.add(g_search)
+
         self.list_groups = {}
+        self.list_expanders = {}
         self.list_rows = {}
+        self.list_all = {}
         for key, label in LIST_TARGETS:
-            group = Adw.PreferencesGroup(title=label)
+            group = Adw.PreferencesGroup()
+            expander = Adw.ExpanderRow(title=label, subtitle="—")
+            group.add(expander)
             self.list_groups[key] = group
+            self.list_expanders[key] = expander
             self.list_rows[key] = []
             page.add(group)
 
         return page
+
+    def _filter_lists(self):
+        """Arama kutusundaki metni TÜM listede (yalnızca çizilmiş
+        satırlarda değil) arar ve sonucu yeniden çizer."""
+        self._render_lists()
+
+    def _render_lists(self):
+        needle = self.entry_search.get_text().strip().lower()
+        for key, _label in LIST_TARGETS:
+            expander = self.list_expanders[key]
+            for row in self.list_rows[key]:
+                expander.remove(row)
+            self.list_rows[key] = []
+
+            alld = self.list_all.get(key, [])
+            matches = [d for d in alld if needle in d.lower()] if needle else alld
+
+            if not alld:
+                expander.set_subtitle(T("(empty)"))
+            elif needle:
+                expander.set_subtitle(
+                    T("{} of {} domains").format(len(matches), len(alld)))
+            else:
+                expander.set_subtitle(T("{} domains").format(len(alld)))
+
+            # Arama yapılırken eşleşen listeler kendiliğinden açılsın,
+            # eşleşmeyenler tamamen gizlensin.
+            if needle:
+                expander.set_visible(bool(matches))
+                expander.set_expanded(bool(matches))
+            else:
+                expander.set_visible(True)
+
+            if not matches:
+                if not alld:
+                    row = Adw.ActionRow(title=T("(empty)"), sensitive=False)
+                    expander.add_row(row)
+                    self.list_rows[key].append(row)
+                continue
+
+            for domain in matches[:LIST_PAGE_SIZE]:
+                row = Adw.ActionRow(title=domain)
+                btn = Gtk.Button(icon_name="user-trash-symbolic",
+                                 valign=Gtk.Align.CENTER,
+                                 tooltip_text=T("Remove"))
+                btn.add_css_class("flat")
+                btn.connect("clicked",
+                            lambda _b, k=key, d=domain: self.on_remove_domain(k, d))
+                row.add_suffix(btn)
+                expander.add_row(row)
+                self.list_rows[key].append(row)
+
+            hidden = len(matches) - LIST_PAGE_SIZE
+            if hidden > 0:
+                row = Adw.ActionRow(
+                    title=T("… and {} more").format(hidden),
+                    subtitle=T("use the search box above to find them"),
+                    sensitive=False)
+                expander.add_row(row)
+                self.list_rows[key].append(row)
 
     def _page_log(self):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -1196,38 +1402,41 @@ class Window(Adw.ApplicationWindow):
         self._gw_mask = gwd.get("lan_mask") or "255.255.255.0"
 
         # Durum sayfasındaki özet satırları
-        self.info_rows["engine"].set_subtitle(engine)
-        self.info_rows["strategy"].set_subtitle(
-            self.config.get("STRATEGY", "?"))
-        self.info_rows["hostlist"].set_subtitle(
-            self.config.get("HOSTLIST_MODE", "?"))
-        self.info_rows["carrier"].set_subtitle(self._carrier or T("not detected yet"))
+        self._check_learned_domains(self.status.get("auto_count"))
+
+        self._set_info("engine", engine)
+        self._set_info("strategy", self.config.get("STRATEGY", "?"))
+        self._set_info("hostlist", self.config.get("HOSTLIST_MODE", "?"))
+        self._set_info(
+            "carrier", self._carrier or T("not detected yet"),
+            "" if self._carrier else "off")
 
         d = getattr(self, "dns", {}) or {}
         if d.get("backend", "none") == "none":
-            self.info_rows["dns"].set_subtitle(T("off"))
+            self._set_info("dns", T("off"), "off")
         elif d.get("encrypted") == "1":
-            self.info_rows["dns"].set_subtitle(
-                T("on · {}").format(d.get("backend", "?")))
+            self._set_info("dns", T("on · {}").format(d.get("backend", "?")), "on")
         else:
-            self.info_rows["dns"].set_subtitle(
-                T("configured but not active · {}").format(d.get("backend", "?")))
+            self._set_info(
+                "dns",
+                T("configured but not active · {}").format(d.get("backend", "?")),
+                "warn")
 
         if self.config.get("GATEWAY_MODE") == "1":
+            self._set_info("gateway", T("on · {}").format(self._gw_ip or "?"), "on")
             # Ağ geçidi çalışsa bile LAN cihazının DNS'i bize
             # yönlendirilmiyorsa cihaz kendi düz metin DNS'ini kullanır ve
             # port 53'e müdahale eden ağlarda (Türk Telekom, TT Mobil)
-            # engelli siteler yine açılmaz - bu yüzden durumu ayrıca
-            # gösteriyoruz.
+            # engelli siteler yine açılmaz. Bu ayrıntı yalnızca ağ geçidi
+            # açıkken ikinci satır olarak görünüyor; kapalıyken satır tek
+            # satır kalıp yer kaplamıyor.
             redirect = gwd.get("dns_redirect") or ""
             self.info_rows["gateway"].set_subtitle(
-                T("on · {}").format(self._gw_ip or "?")
-                + " · "
-                + (T("DNS redirect: {}").format(redirect) if redirect
-                   else T("device DNS not redirected"))
-            )
+                T("DNS redirect: {}").format(redirect) if redirect
+                else T("device DNS not redirected"))
         else:
-            self.info_rows["gateway"].set_subtitle(T("off"))
+            self._set_info("gateway", T("off"), "off")
+            self.info_rows["gateway"].set_subtitle("")
 
         # Ağ değişti mi? (arayüz + router + WAN IP). İlk açılışta da
         # çalışır: operatör satırı elle düğmeye basılmayı beklemesin.
@@ -1556,7 +1765,7 @@ class Window(Adw.ApplicationWindow):
         asn, as_name = entry.get("asn", "?"), entry.get("as_name", "?")
         strategy = entry.get("strategy", "")
         self._carrier = f"AS{asn} · {as_name}"
-        self.info_rows["carrier"].set_subtitle(self._carrier)
+        self._set_info("carrier", self._carrier)
         if mode == "cached":
             return
         if mode == "ask":
@@ -1653,30 +1862,142 @@ class Window(Adw.ApplicationWindow):
 
     def _refresh_lists(self):
         for key, _label in LIST_TARGETS:
-            group = self.list_groups[key]
-            for row in self.list_rows[key]:
-                group.remove(row)
-            self.list_rows[key] = []
-
             _, out = ctl("hostlist", "show", key, timeout=POLL_TIMEOUT)
-            domains = [d.strip() for d in out.splitlines() if d.strip()]
-            if not domains:
-                row = Adw.ActionRow(title=T("(empty)"), sensitive=False)
-                group.add(row)
-                self.list_rows[key].append(row)
-                continue
+            self.list_all[key] = [d.strip() for d in out.splitlines() if d.strip()]
+        self._render_lists()
 
-            for domain in domains:
-                row = Adw.ActionRow(title=domain)
-                btn = Gtk.Button(icon_name="user-trash-symbolic",
-                                 valign=Gtk.Align.CENTER,
-                                 tooltip_text=T("Remove"))
-                btn.add_css_class("flat")
-                btn.connect("clicked",
-                            lambda _b, k=key, d=domain: self.on_remove_domain(k, d))
-                row.add_suffix(btn)
-                group.add(row)
-                self.list_rows[key].append(row)
+    # -----------------------------------------------------------------
+    # bağlantı sınaması
+    # -----------------------------------------------------------------
+
+    def on_conncheck(self, *_a):
+        """Birkaç bilinen hedefe gerçek TLS el sıkışması dener."""
+        self.btn_conncheck.set_sensitive(False)
+        self.stack.set_visible_child_name("log")
+        self.log("\n=== " + T("connection test") + " ===")
+        try:
+            proc = Gio.Subprocess.new(
+                [*HOST_PREFIX, CTL, f"--lang={LANG}", "conncheck"],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE,
+            )
+        except GLib.Error as exc:
+            self.btn_conncheck.set_sensitive(True)
+            self.log(f"could not start: {exc.message}")
+            return
+        proc.communicate_utf8_async(None, None, self._on_conncheck_done)
+
+    def _on_conncheck_done(self, proc, res):
+        self.btn_conncheck.set_sensitive(True)
+        try:
+            _ok, out, _ = proc.communicate_utf8_finish(res)
+        except GLib.Error as exc:
+            self.log(f"error: {exc.message}")
+            return
+        passed = total = 0
+        for line in (out or "").splitlines():
+            if "\t" in line:
+                parts = line.split("\t")
+                mark = "✓" if parts[1] == "ok" else "✗"
+                self.log(f"  {mark} {parts[0]}")
+            elif line.startswith("passed="):
+                passed = int(line.split("=", 1)[1] or 0)
+            elif line.startswith("total="):
+                total = int(line.split("=", 1)[1] or 0)
+        if total:
+            self.log(T("{} of {} targets reachable").format(passed, total))
+            self.toast(T("{} of {} targets reachable").format(passed, total))
+
+    # -----------------------------------------------------------------
+    # blockcheck sonuçları
+    # -----------------------------------------------------------------
+
+    def on_blockcheck_results(self, *_a):
+        """Son blockcheck kaydındaki çalışan stratejileri listeler."""
+        engine = ENGINES[self.row_engine.get_selected()][0]
+        code, out = ctl("blockcheck-results", engine, timeout=20)
+        d = parse_kv(out)
+        if code != 0 or d.get("result") != "ok" or int(d.get("count", 0) or 0) == 0:
+            self.toast(T("No blockcheck results yet; run the ISP analysis first."))
+            return
+        found = [v for k, v in sorted(d.items()) if k.startswith("strategy")]
+        self._show_blockcheck_results(found, engine)
+
+    def _show_blockcheck_results(self, found, engine):
+        heading = T("Working strategies")
+        body = T("Blockcheck found {} working strategies. Pick one to apply.").format(
+            len(found))
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        group = Adw.PreferencesGroup()
+        buttons = []
+        for args in found:
+            row = Adw.ActionRow(title=args, title_lines=3)
+            row.add_css_class("property")
+            check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
+            if buttons:
+                check.set_group(buttons[0])
+            else:
+                check.set_active(True)
+            buttons.append(check)
+            row.add_prefix(check)
+            row.set_activatable_widget(check)
+            group.add(row)
+        box.append(group)
+
+        def on_resp(_d, resp):
+            if resp != "apply":
+                return
+            idx = next((i for i, b in enumerate(buttons) if b.get_active()), 0)
+            self.run_privileged(
+                ["config", "set", f"CUSTOM_ARGS={found[idx]}",
+                 "STRATEGY=analiz", f"ENGINE={engine}"],
+                title=T("apply blockcheck result"),
+                done=lambda _c: self.refresh())
+
+        if hasattr(Adw, "AlertDialog"):
+            dlg = Adw.AlertDialog(heading=heading, body=body, extra_child=box)
+            dlg.add_response("cancel", T("Cancel"))
+            dlg.add_response("apply", T("Apply"))
+            dlg.set_response_appearance("apply", Adw.ResponseAppearance.SUGGESTED)
+            dlg.connect("response", on_resp)
+            dlg.present(self)
+        else:
+            dlg = Adw.MessageDialog(transient_for=self, heading=heading, body=body)
+            dlg.set_extra_child(box)
+            dlg.add_response("cancel", T("Cancel"))
+            dlg.add_response("apply", T("Apply"))
+            dlg.set_response_appearance("apply", Adw.ResponseAppearance.SUGGESTED)
+            dlg.connect("response", on_resp)
+            dlg.present()
+
+    # -----------------------------------------------------------------
+    # otomatik öğrenilen domain bildirimi
+    # -----------------------------------------------------------------
+
+    def _check_learned_domains(self, count_text):
+        """hostlist-auto yeni bir domain öğrendiyse haber ver. Sayı
+        status çıktısından geliyor, ek bir çağrı yapılmıyor."""
+        try:
+            count = int(count_text or 0)
+        except ValueError:
+            return
+        prev = self._auto_count
+        self._auto_count = count
+        # İlk yenilemede taban değeri kaydet, bildirim gönderme.
+        if prev is None or count <= prev:
+            return
+        added = count - prev
+        text = T("hostlist-auto learned {} new domain(s)").format(added)
+        self.toast(text)
+        self.log(text)
+        app = self.get_application()
+        if app is not None:
+            note = Gio.Notification.new(T("Unwall"))
+            note.set_body(text)
+            try:
+                app.send_notification("unwall-learned", note)
+            except GLib.Error as exc:
+                log.debug("notification failed: %s", exc.message)
 
     def on_show_gateway_help(self, *_):
         ip = self._gw_ip or "192.168.1.1"
