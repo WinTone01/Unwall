@@ -1573,7 +1573,7 @@ cleared_bump() {
 	local dom="$1" n; n="$(cleared_count "$dom")"
 	n=$((n + 1))
 	local tmp; tmp="$(mktemp)"
-	{ grep -v "^$dom[[:space:]]" "$CLEARED_STATE" 2>/dev/null || true
+	{ grep -v "^${dom}[[:space:]]" "$CLEARED_STATE" 2>/dev/null || true
 	  printf '%s\t%s\n' "$dom" "$n"; } > "$tmp"
 	cat "$tmp" > "$CLEARED_STATE"
 	rm -f "$tmp"
