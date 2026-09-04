@@ -272,10 +272,39 @@ for f in hostlist.txt excludelist.txt autohostlist.txt; do
 		install -m 0644 "$SRC/$f" "$ETCDIR/$f"
 	fi
 done
+# Motorun yeni öğrendiklerini yazdığı karantina listesi (bkz.
+# "unwallctl verify"): buradaki alan adları ölçülüp gerçekten engelli
+# olduğu doğrulanana kadar kalıcı listeye geçmez.
+[ -f "$ETCDIR/autohostlist-pending.txt" ] || : > "$ETCDIR/autohostlist-pending.txt"
+chmod 0644 "$ETCDIR/autohostlist-pending.txt"
+
+# Ölçüm kullanıcısı: ayrıcalıksız, hiçbir şey çalıştırmaz, ev dizini yok.
+# Yalnızca "bu trafiği DPI atlatmadan geçir" etiketi olarak kullanılıyor
+# (nftables kuralı onun uid'sine bakıp paketleri işaretliyor), böylece
+# "bu site atlatma olmadan da açılıyor mu?" sorusu kuralları söküp
+# takmadan ölçülebiliyor.
+if ! id -u unwall-probe >/dev/null 2>&1; then
+	if useradd --system --no-create-home --shell /usr/sbin/nologin \
+		--comment 'Unwall probe' unwall-probe 2>/dev/null ||
+		useradd -r -M -s /sbin/nologin unwall-probe 2>/dev/null; then
+		note "ölçüm kullanıcısı oluşturuldu: unwall-probe"
+	else
+		note "uyarı: unwall-probe kullanıcısı oluşturulamadı; 'unwallctl verify' ilk çalıştırmada dener"
+	fi
+fi
 
 sed -e "s|@BINDIR@|$BINDIR|g" -e "s|@ETCDIR@|$ETCDIR|g" -e "s|@LOGDIR@|$LOGDIR|g" \
 	"$SRC/systemd/unwall.service" > "$UNITDIR/unwall.service"
 chmod 0644 "$UNITDIR/unwall.service"
+
+# Öğrenilen alan adlarını düzenli olarak ölçen zamanlayıcı. Kurulur ama
+# ETKİNLEŞTİRİLMEZ - bu paket hiçbir şeyi kendiliğinden başlatmaz;
+# arayüzdeki "Öğrenilenleri otomatik doğrula" anahtarı ya da elle:
+#   sudo systemctl enable --now unwall-verify.timer
+sed -e "s|@BINDIR@|$BINDIR|g" \
+	"$SRC/systemd/unwall-verify.service" > "$UNITDIR/unwall-verify.service"
+install -m 0644 "$SRC/systemd/unwall-verify.timer" "$UNITDIR/unwall-verify.timer"
+chmod 0644 "$UNITDIR/unwall-verify.service"
 
 install -d "$POLKITDIR"
 sed -e "s|@BINDIR@|$BINDIR|g" \

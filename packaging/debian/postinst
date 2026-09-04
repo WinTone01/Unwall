@@ -4,6 +4,14 @@ set -e
 case "$1" in
 configure)
 	systemctl daemon-reload >/dev/null 2>&1 || true
+	# Ölçüm kullanıcısı (ayrıcalıksız, ev dizinsiz): "bu site DPI atlatma
+	# olmadan da açılıyor mu?" ölçümünde trafiği işaretlemek için kullanılır
+	# (bkz. unwallctl verify).
+	if ! id -u unwall-probe >/dev/null 2>&1; then
+		useradd --system --no-create-home --shell /usr/sbin/nologin \
+			--comment 'Unwall probe' unwall-probe >/dev/null 2>&1 ||
+			useradd -r -M -s /sbin/nologin unwall-probe >/dev/null 2>&1 || true
+	fi
 	if command -v update-desktop-database >/dev/null 2>&1; then
 		update-desktop-database -q /usr/share/applications || true
 	fi

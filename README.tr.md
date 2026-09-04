@@ -203,12 +203,67 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `sudo unwallctl disable-conflicts` | çakışan DPI araçlarını kapat |
 | `unwallctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
 | `unwallctl conncheck [domainler]` | birkaç hedefe gerçek TLS el sıkışması dener |
+| `sudo unwallctl verify [--all]` | öğrenilen alan adlarını ölçüp doğrular (yanlış pozitifleri siler) |
+| `sudo unwallctl verify-timer on\|off` | düzenli doğrulamayı aç / kapat |
 | `unwallctl blockcheck-results [motor]` | son blockcheck'teki tüm çalışan stratejileri listeler |
 | `unwallctl update-check` | GitHub'da yeni sürüm var mı bak (key=value) |
 | `sudo unwallctl self-update [sürüm]` | bir sürümü indirip kur (varsayılan: en son) |
 
 **Ayar dosyası**: `/etc/unwall/unwall.conf`
-**Listeler**: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
+**Listeler**: `/etc/unwall/{hostlist,excludelist,autohostlist,autohostlist-pending}.txt`
+
+### Otomatik öğrenme ve yanlış pozitifler
+
+`HOSTLIST_MODE=auto` iken motor, engellendiğini düşündüğü alan adlarını
+kendisi öğrenir. Bu tespit tahminidir: bir bağlantının başarısız olması
+engellendiği anlamına gelmez. Anlık düşen bir site, kablosuz ağdaki bir
+sıçrama ya da cevap vermeyen bir telemetri ucu da aynı görünür. Sonuç,
+zamanla listenin gerçekte hiç engelli olmayan alan adlarıyla dolmasıdır -
+bir test makinesinde 497 girdinin 368'i (yani %74'ü) böyleydi: `ping.archlinux.org`,
+`connectivitycheck.gstatic.com`, `csi.gstatic.com`, `incoming.telemetry.mozilla.org`...
+
+Bu sadece gürültü değil: engelli olmayan bir alan adına strateji uygulamak
+o siteyi bozabilir.
+
+v1.5'ten beri öğrenilen alan adları doğrudan kalıcı listeye yazılmıyor:
+
+1. **Karantina.** Motor yeni öğrendiklerini `autohostlist-pending.txt`'ye
+   yazar. Strateji bu alan adlarına da uygulanır (yani hiçbir şey
+   yavaşlamaz), ama kalıcı `autohostlist.txt`'ye ancak doğrulandıktan sonra
+   geçerler.
+2. **Ölçüm.** `unwallctl verify` her alan adına iki bağlantı kurar: biri DPI
+   atlatma **uygulanmadan**, biri normal. Atlatmasız bağlantı, ayrılmış bir
+   sistem kullanıcısının (`unwall-probe`) trafiğini motorun kendi fwmark'ıyla
+   işaretleyen bir nftables kuralı sayesinde kuyruğa hiç girmez - yani
+   kuralları söküp takmadan, çalışan trafiğe dokunmadan ölçüm yapılır.
+3. **Karar.** Dört sonuçtan biri:
+
+| Karar | Anlamı | Yapılan |
+|---|---|---|
+| `false-positive` | atlatmasız da açılıyor | listeden silinir (karantinadan ikinci kez düşerse dışlama listesine yazılır) |
+| `blocked` | atlatmasız kapalı, atlatmayla açık | kalıcı listeye alınır |
+| `still-blocked` | iki türlü de kapalı, imza DPI müdahalesi gibi | listede kalır — **engel gerçek ama strateji yetmiyor** |
+| `unreachable` | iki türlü de açılmıyor, imza DPI'a benzemiyor | listeden silinir (ölü host) |
+
+```bash
+sudo unwallctl verify          # karantinadakileri doğrula
+sudo unwallctl verify --all    # kalıcı listeyi de denetle
+sudo unwallctl verify-timer on # saatte bir kendiliğinden yapsın
+```
+
+Listeler değiştiğinde motor onları kendiliğinden yeniden yükler; servisi
+yeniden başlatmaya gerek yoktur.
+
+> [!NOTE]
+> Ölçüm TCP/443 üzerinden yapılır. Yalnızca QUIC'i engellenen bir alan adı
+> burada "açılıyor" görünebilir, bu yüzden **kalıcı listeden düşen** girdiler
+> asla otomatik olarak dışlama listesine yazılmaz - sadece silinir, gerekirse
+> motor yeniden öğrenir. Bir alan adının listede kalmasını garantilemek
+> isterseniz `hostlist.txt`'ye yazın: `verify` oraya hiç dokunmaz.
+> Ham IP girdileri de ölçülmez (`https://<ip>` her koşulda sertifika hatası
+> verir), oldukları gibi bırakılırlar.
+
+
 **Günlükler**: `journalctl -u unwall -f` ve `/var/log/unwall/`
 
 Arayüz günde bir kez arka planda GitHub'da yeni sürüm olup olmadığına bakar

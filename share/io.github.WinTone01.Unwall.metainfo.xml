@@ -59,6 +59,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.5.0" date="2026-09-04">
+      <description>
+        <p>Auto-learned domains are now verified by measurement instead of being trusted. The engine's block detection is a guess - a site that is briefly down or a telemetry endpoint that never answers looks exactly like a blocked one - and on one real machine 368 of 497 learned entries had never been blocked at all. New learnings now land in a quarantine list and are promoted only once Unwall has opened two connections to the domain, one with the bypass and one without, and seen the difference for itself.</p>
+        <p>Adds "unwallctl verify" with an hourly timer and a button on the Lists page, the quarantine list in the interface, and a separate verdict for domains that are genuinely blocked but which the current strategy cannot beat.</p>
+      </description>
+    </release>
     <release version="1.4.3" date="2026-09-04">
       <description>
         <p>The Status page fits in the window again and the Lists page is collapsible, capped and searchable instead of rendering hundreds of rows.</p>

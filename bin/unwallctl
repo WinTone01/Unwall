@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-VERSION="1.4.3"
+VERSION="1.5.0"
 
 # --- Yollar (paketleme sırasında sed ile değiştirilir) ---
 UW_LIB="${UW_LIB:-/usr/local/lib/unwall}"
@@ -42,6 +42,13 @@ PORTS_UDP="443,50000-50100"
 GATEWAY_MODE="0"
 WAN_IFACE=""
 ENABLE_IPV6="0"
+# hostlist-auto: motorun bir alan adını "engelli" saymadan önce görmesi
+# gereken başarısızlık sayısı. Motorun kendi varsayılanı 3; biz 2
+# kullanıyoruz (bkz. build_engine_cmd) - yanlış pozitifleri karantina +
+# doğrulama ile temizlediğimiz için düşük eşik artık güvenli.
+AUTO_FAIL_THRESHOLD="2"
+# Öğrenilen alan adları doğrulanmadan kalıcı listeye geçmesin (0/1).
+AUTO_VERIFY="1"
 
 # Kaynak metinler İngilizce; Türkçe karşılıkları t() içinde.
 t() {
@@ -128,9 +135,10 @@ cmd_config() {
 			local k
 			for k in "$@"; do printf '%s\n' "${!k-}"; done
 		else
-			printf 'ENGINE=%s\nSTRATEGY=%s\nCUSTOM_ARGS=%s\nHOSTLIST_MODE=%s\nQNUM=%s\nPORTS_TCP=%s\nPORTS_UDP=%s\nGATEWAY_MODE=%s\nWAN_IFACE=%s\nENABLE_IPV6=%s\n' \
+			printf 'ENGINE=%s\nSTRATEGY=%s\nCUSTOM_ARGS=%s\nHOSTLIST_MODE=%s\nQNUM=%s\nPORTS_TCP=%s\nPORTS_UDP=%s\nGATEWAY_MODE=%s\nWAN_IFACE=%s\nENABLE_IPV6=%s\nAUTO_FAIL_THRESHOLD=%s\nAUTO_VERIFY=%s\n' \
 				"$ENGINE" "$STRATEGY" "$CUSTOM_ARGS" "$HOSTLIST_MODE" "$QNUM" \
-				"$PORTS_TCP" "$PORTS_UDP" "$GATEWAY_MODE" "$WAN_IFACE" "$ENABLE_IPV6"
+				"$PORTS_TCP" "$PORTS_UDP" "$GATEWAY_MODE" "$WAN_IFACE" "$ENABLE_IPV6" \
+				"$AUTO_FAIL_THRESHOLD" "$AUTO_VERIFY"
 		fi
 		;;
 	set)
@@ -142,7 +150,7 @@ cmd_config() {
 			key="${pair%%=*}"
 			val="${pair#*=}"
 			case "$key" in
-			ENGINE|STRATEGY|CUSTOM_ARGS|HOSTLIST_MODE|QNUM|PORTS_TCP|PORTS_UDP|GATEWAY_MODE|WAN_IFACE|ENABLE_IPV6) ;;
+			ENGINE|STRATEGY|CUSTOM_ARGS|HOSTLIST_MODE|QNUM|PORTS_TCP|PORTS_UDP|GATEWAY_MODE|WAN_IFACE|ENABLE_IPV6|AUTO_FAIL_THRESHOLD|AUTO_VERIFY) ;;
 			*) die "bilinmeyen ayar: $key" ;;
 			esac
 			# mevcut satırı sil, sonuna yenisini ekle
@@ -411,6 +419,20 @@ nft_ruleset() {
 	[ "$ENABLE_IPV6" = "1" ] && fam="inet"
 
 	printf 'table %s %s {\n' "$fam" "$NFT_TABLE"
+
+	# Ölçüm kullanıcısının trafiği DPI atlatmadan geçsin: paketleri motorun
+	# fwmark'ıyla işaretliyoruz, aşağıdaki kuyruk kuralları da işaretli
+	# paketleri almıyor ("mark and DESYNC_MARK == 0"). Böylece "bu site
+	# atlatma OLMADAN açılıyor mu?" sorusunu, kuralları söküp takmadan,
+	# çalışan trafiğe hiç dokunmadan ölçebiliyoruz (bkz. probe_https).
+	local puid; puid="$(probe_uid)" || puid=""
+	if [ -n "$puid" ]; then
+		printf '\tchain probe_bypass {\n'
+		printf '\t\ttype filter hook output priority mangle; policy accept;\n'
+		printf '\t\tmeta skuid %s meta mark set meta mark or %s\n' "$puid" "$DESYNC_MARK"
+		printf '\t}\n'
+	fi
+
 	printf '\tchain postrouting {\n'
 	printf '\t\ttype filter hook postrouting priority 99; policy accept;\n'
 	if [ -n "$PORTS_TCP" ]; then
@@ -698,22 +720,42 @@ build_engine_cmd() {
 
 	case "$HOSTLIST_MODE" in
 	auto)
-		touch "$UW_ETC/autohostlist.txt" 2>/dev/null || true
-		# Motor --user=nobody'e düşüyor (yukarı bkz.); autohostlist.txt
-		# root:root kalırsa öğrendiği domaini asla yazamaz. Sahibi nobody
-		# olsun ki hem motor yazabilsin hem de dosya world-writable
-		# olmasın.
-		chown nobody:nobody "$UW_ETC/autohostlist.txt" 2>/dev/null || true
-		args+=("--hostlist-auto=$UW_ETC/autohostlist.txt")
-		# Motorun varsayılanı 60 saniyede 3 ayrı başarısız deneme ister.
-		# Gerçekte kullanıcılar genelde tek bir başarısız yüklemeden sonra
-		# sayfayı yeniliyor ve strateji ikinci denemede zaten geçiyor - bu
-		# da 3'e hiç ulaşılmadan bir daha asla o domain'i öğrenmiyoruz
-		# olur (bkz. issue #1). Eşiği 1'e indirerek tek bir gerçek
-		# başarısızlıktan (kendi retrans eşiği hâlâ 3, yani rastgele bir
-		# ağ sıçraması yeterli değil) sonra ekliyoruz; böylece bir sonraki
-		# ziyarette refresh'e bile gerek kalmaz.
-		args+=("--hostlist-auto-fail-threshold=1")
+		local verified pending
+		verified="$(hostlist_file auto)"
+		pending="$(hostlist_file pending)"
+		touch "$verified" "$pending" 2>/dev/null || true
+		# Motor --user=nobody'e düşüyor (yukarı bkz.); dosyalar root:root
+		# kalırsa öğrendiği domaini asla yazamaz. Sahibi nobody olsun ki
+		# hem motor yazabilsin hem de dosya world-writable olmasın.
+		chown nobody:nobody "$verified" "$pending" 2>/dev/null || true
+
+		# Elle eklenen liste auto modda da geçerli: kullanıcı bir alan
+		# adını hostlist.txt'ye yazdığında motor onu görmüyordu, çünkü
+		# auto modda yalnızca --hostlist-auto veriliyordu.
+		[ -s "$UW_ETC/hostlist.txt" ] && args+=("--hostlist=$UW_ETC/hostlist.txt")
+
+		if [ "$AUTO_VERIFY" = "1" ]; then
+			# Doğrulanmış liste "include" olarak, motorun kendi
+			# öğrendikleri ise ayrı bir karantina dosyasına. Motor için
+			# ikisi de aynı anlama gelir (ikisindeki alan adlarına da
+			# strateji uygulanır), ama biz yeni öğrenilenleri ayırt
+			# edebiliyoruz: "unwallctl verify" karantinadakileri ölçüp
+			# gerçekten engelliyse kalıcı listeye taşıyor, değilse siliyor
+			# (bkz. cmd_verify). Yanlış pozitifin kalıcı olmasını
+			# engelleyen şey bu ayrım.
+			args+=("--hostlist=$verified")
+			args+=("--hostlist-auto=$pending")
+		else
+			args+=("--hostlist-auto=$verified")
+		fi
+
+		# Motorun varsayılanı 60 saniyede 3 ayrı başarısızlık ister; v1.3.6'da
+		# bunu 1'e indirmiştik (issue #1: "hiç öğrenmiyor"), ama tek bir
+		# başarısız bağlantı - anlık düşen bir site, kablosuz sıçraması,
+		# yanıt vermeyen bir QUIC ucu - domaini kalıcı olarak listeye
+		# yazdığı için yanlış pozitif üretiyordu. Artık varsayılan 2 ve
+		# ayarlanabilir; asıl güvence eşik değil, doğrulama adımı.
+		args+=("--hostlist-auto-fail-threshold=$AUTO_FAIL_THRESHOLD")
 		# hostlist-auto bir alan adını yalnızca aynı motor profili içinde
 		# UW_ETC/log/hostlist-auto.log tanınabilir bir "başarısız bağlantı"
 		# örüntüsü (TCP retrans ya da UDP giden≥4/gelen≤1 - motorun kendi
@@ -1326,6 +1368,10 @@ hostlist_file() {
 	case "$1" in
 	manual)  printf '%s/hostlist.txt' "$UW_ETC" ;;
 	auto)    printf '%s/autohostlist.txt' "$UW_ETC" ;;
+	# Motorun yeni öğrendiklerini yazdığı karantina listesi. Buradaki
+	# alan adlarına strateji uygulanır (motor için bu da bir "include"
+	# listesidir) ama kalıcı listeye ancak doğrulandıktan sonra geçerler.
+	pending) printf '%s/autohostlist-pending.txt' "$UW_ETC" ;;
 	exclude) printf '%s/excludelist.txt' "$UW_ETC" ;;
 	*) return 1 ;;
 	esac
@@ -1342,14 +1388,14 @@ cmd_hostlist() {
 	local action="${1:-}" which="${2:-}" domain="${3:-}" file
 	case "$action" in
 	show)
-		file="$(hostlist_file "$which")" || die "geçersiz liste: $which (manual|auto|exclude)"
+		file="$(hostlist_file "$which")" || die "geçersiz liste: $which (manual|auto|pending|exclude)"
 		[ -f "$file" ] || return 0
 		# Yorum ve boş satırları ayıkla; arayüz ham liste bekliyor.
 		grep -vE '^\s*(#|$)' "$file" 2>/dev/null || true
 		;;
 	add)
 		need_root
-		file="$(hostlist_file "$which")" || die "geçersiz liste: $which (manual|auto|exclude)"
+		file="$(hostlist_file "$which")" || die "geçersiz liste: $which (manual|auto|pending|exclude)"
 		domain="$(printf '%s' "$domain" | tr 'A-Z' 'a-z' | tr -d '[:space:]')"
 		[ -n "$domain" ] || die "alan adı boş"
 		hostlist_valid_domain "$domain" || die "geçersiz alan adı: $domain"
@@ -1363,7 +1409,7 @@ cmd_hostlist() {
 		;;
 	remove)
 		need_root
-		file="$(hostlist_file "$which")" || die "geçersiz liste: $which (manual|auto|exclude)"
+		file="$(hostlist_file "$which")" || die "geçersiz liste: $which (manual|auto|pending|exclude)"
 		domain="$(printf '%s' "$domain" | tr 'A-Z' 'a-z' | tr -d '[:space:]')"
 		[ -n "$domain" ] || die "alan adı boş"
 		[ -f "$file" ] || die "liste yok: $file"
@@ -1377,8 +1423,322 @@ cmd_hostlist() {
 		info "silindi: $domain <- $(basename "$file")"
 		;;
 	*)
-		die "kullanım: unwallctl hostlist show|add|remove <manual|auto|exclude> [alan-adı]"
+		die "kullanım: unwallctl hostlist show|add|remove <manual|auto|pending|exclude> [alan-adı]"
 		;;
+	esac
+}
+
+# =====================================================================
+# Ölçüm altyapısı (probe)
+#
+# "Bu alan adı gerçekten engelli mi?" sorusunu tahminle değil ölçerek
+# cevaplamak için iki bağlantı karşılaştırılır:
+#
+#   bypass : DPI atlatma UYGULANMADAN. Paketleri motorun kendi fwmark'ı
+#            ile işaretlediğimiz için nftables kuyruğuna hiç girmezler
+#            (kurallar "mark and DESYNC_MARK == 0" arıyor), yani ham
+#            bağlantı. İşaretleme, ayrılmış bir sistem kullanıcısının
+#            (unwall-probe) trafiğine bakan output zinciriyle yapılır -
+#            bkz. nft_ruleset/probe_bypass.
+#   engine : normal, yani aktif stratejiyle.
+#
+# bypass çalışıyorsa alan adı zaten engelli değildir; bypass düşüp engine
+# çalışıyorsa engel gerçektir ve stratejimiz onu geçiyordur.
+# =====================================================================
+
+PROBE_USER="unwall-probe"
+
+probe_uid() { id -u "$PROBE_USER" 2>/dev/null; }
+
+# probe_https <alan-adı> <bypass|engine>
+# stdout: ok | cut | dead      (dönüş değeri: 0 = bağlantı kuruldu)
+#   ok   : TLS el sıkışması tamamlandı, site açılıyor
+#   cut   : bağlantı araya girilerek koptu (RST, TLS hatası, boş yanıt) -
+#           DPI müdahalesinin tipik imzası
+#   dead : hiç açılmadı (çözümlenemedi, bağlanamadı, zaman aşımı) - site
+#          ölü ya da yönlendirilmiyor olabilir; tek başına "engelli"
+#          demek için yeterli değil
+probe_https() {
+	local dom="$1" mode="$2" code rc
+	local pre=()
+	if [ "$mode" = bypass ]; then
+		pre=(runuser -u "$PROBE_USER" --)
+	fi
+	# %{http_code} bağlantı kurulamadığında 000 döner. Hangi HTTP kodunun
+	# döndüğü umurumuzda değil (403 de olsa TLS el sıkışması tamamlanmış,
+	# yani DPI araya girmemiş demektir); ayırt ettiğimiz şey bağlantının
+	# kurulup kurulmadığı.
+	code="$(${pre[@]+"${pre[@]}"} curl -s -o /dev/null -w '%{http_code}' \
+		--max-time 8 --connect-timeout 4 --retry 0 \
+		"https://$dom/" 2>/dev/null)" && rc=0 || rc=$?
+	if [ "$rc" = 0 ] && [ -n "$code" ] && [ "$code" != "000" ]; then
+		printf 'ok'
+		return 0
+	fi
+	case "$rc" in
+	6|7|28) printf 'dead' ;;
+	*)      printf 'cut' ;;
+	esac
+	return 1
+}
+
+# Aynı alan adı ikinci kez yanlış pozitif çıkarsa artık tesadüf değildir;
+# o zaman kalıcı olarak dışlama listesine alıyoruz. İlk seferde sadece
+# karantinadan siliyoruz ki gerçekten engellenmeye başlarsa motor onu
+# yeniden öğrenebilsin.
+CLEARED_STATE="$UW_ETC/.autohostlist-cleared"
+
+cleared_count() {
+	[ -f "$CLEARED_STATE" ] || { printf '0'; return 0; }
+	awk -v d="$1" '$1==d {print $2; found=1} END {if (!found) print 0}' \
+		"$CLEARED_STATE" | head -1
+}
+
+cleared_bump() {
+	local dom="$1" n; n="$(cleared_count "$dom")"
+	n=$((n + 1))
+	local tmp; tmp="$(mktemp)"
+	{ grep -v "^$dom[[:space:]]" "$CLEARED_STATE" 2>/dev/null || true
+	  printf '%s\t%s\n' "$dom" "$n"; } > "$tmp"
+	cat "$tmp" > "$CLEARED_STATE"
+	rm -f "$tmp"
+	printf '%s' "$n"
+}
+
+# Bir alan adını listeden siler (dosya sahipliğini koruyarak).
+hostlist_drop() {
+	local file="$1" dom="$2" tmp
+	[ -f "$file" ] || return 0
+	tmp="$(mktemp)"
+	grep -vxF "$dom" "$file" > "$tmp" 2>/dev/null || true
+	cat "$tmp" > "$file"
+	rm -f "$tmp"
+}
+
+hostlist_append() {
+	local file="$1" dom="$2"
+	touch "$file" 2>/dev/null || true
+	grep -qxF "$dom" "$file" 2>/dev/null && return 0
+	printf '%s\n' "$dom" >> "$file"
+}
+
+# Ölçüm kullanıcısı ayrıcalıksızdır ve yalnızca "işaretli trafik"
+# etiketi olarak kullanılır; hiçbir şey çalıştırmaz, ev dizini yoktur.
+ensure_probe_user() {
+	id -u "$PROBE_USER" >/dev/null 2>&1 && return 0
+	command -v useradd >/dev/null 2>&1 || return 1
+	useradd --system --no-create-home --shell /usr/sbin/nologin \
+		--comment 'Unwall probe' "$PROBE_USER" 2>/dev/null ||
+		useradd -r -M -s /sbin/nologin "$PROBE_USER" 2>/dev/null || return 1
+	id -u "$PROBE_USER" >/dev/null 2>&1
+}
+
+# verify_one <alan-adı>
+#   false-positive : atlatma olmadan da açılıyor -> listede olmamalı
+#   blocked        : atlatmasız kapalı, atlatmayla açık -> listede kalmalı
+#   unreachable    : iki türlü de açılmıyor ve imza DPI'a benzemiyor
+#                    (ölü host, yanlış kayıt) -> listede tutmanın anlamı yok
+#   still-blocked  : iki türlü de kapalı ama imza DPI müdahalesi gibi ->
+#                    engel gerçek, ama stratejimiz onu geçemiyor
+# Ham IP girdileri (motor SNI göremediğinde bunları da öğrenebiliyor)
+# ölçülemez: https://<ip> her koşulda sertifika hatası verir, yani ölçüm
+# her seferinde "engelli" der. Bunlara hiç dokunmuyoruz.
+is_ip_literal() {
+	printf '%s' "$1" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$|:'
+}
+
+verify_one() {
+	local dom="$1" b1 b2
+	if is_ip_literal "$dom"; then
+		printf 'skipped-ip'
+		return 0
+	fi
+	b1="$(probe_https "$dom" bypass)" && { printf 'false-positive'; return 0; }
+	# İlk başarısızlık geçici bir ağ sorunu da olabilir; "engelli" demeden
+	# önce bir kez daha bakıyoruz. Yanlış pozitifi silmek ucuz, gerçek bir
+	# engeli yanlışlıkla silmek pahalı.
+	b2="$(probe_https "$dom" bypass)" && { printf 'false-positive'; return 0; }
+	if probe_https "$dom" engine >/dev/null; then
+		printf 'blocked'
+	elif [ "$b1" = dead ] && [ "$b2" = dead ]; then
+		printf 'unreachable'
+	else
+		printf 'still-blocked'
+	fi
+}
+
+# verify [--all] [alan-adı ...]
+# Karantinadaki alan adlarını ölçer: gerçekten engelli olanları kalıcı
+# listeye taşır, olmayanları siler. --all ile kalıcı liste de denetlenir.
+# Listeler motor tarafından kendiliğinden yeniden yüklenir (zapret2
+# docs/manual.en.md: "Hostlist and ipset files are reloaded automatically
+# when modified"), yani servisi yeniden başlatmaya gerek yok.
+cmd_verify() {
+	need_root
+	load_config
+	command -v curl >/dev/null 2>&1 || die "curl gerekli (ölçüm için)"
+	command -v runuser >/dev/null 2>&1 || die "runuser gerekli (util-linux)"
+
+	local all=0 auto=0
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--all)  all=1; shift ;;
+		# Zamanlayıcıdan çağrılırken: ön koşullar yoksa hata değil, sessiz
+		# çıkış (bkz. systemd/unwall-verify.service).
+		--auto) auto=1; shift ;;
+		*) break ;;
+		esac
+	done
+
+	if [ -z "$(probe_uid)" ]; then
+		ensure_probe_user || die "ölçüm kullanıcısı oluşturulamadı: $PROBE_USER"
+		info "ölçüm kullanıcısı oluşturuldu: $PROBE_USER"
+	fi
+
+	# "Atlatmasız" ölçüm, kuralların kendisine dayanıyor (işaretli paket
+	# kuyruğa girmiyor). Kurallar yüklü değilse iki ölçüm de aynı şey olur
+	# ve her alan adı yanlışlıkla "engelli değil" çıkardı - o yüzden hiç
+	# ölçmüyoruz.
+	if ! nft list table ip "$NFT_TABLE" >/dev/null 2>&1 &&
+		! nft list table inet "$NFT_TABLE" >/dev/null 2>&1; then
+		[ "$auto" = 1 ] && return 0
+		die "kurallar yüklü değil; önce: unwallctl start"
+	fi
+	nft list chain ip "$NFT_TABLE" probe_bypass >/dev/null 2>&1 ||
+		nft list chain inet "$NFT_TABLE" probe_bypass >/dev/null 2>&1 ||
+		cmd_nft_apply
+
+	local pending verified exclude
+	pending="$(hostlist_file pending)"
+	verified="$(hostlist_file auto)"
+	exclude="$(hostlist_file exclude)"
+
+	# --- 1. aşama: ölçüm (paralel) ---
+	# Her alan adı için birkaç saniyelik ağ beklemesi var; birkaç yüz
+	# girdilik bir listeyi sırayla ölçmek yarım saati bulurdu. Dosyalara
+	# hiç dokunmadan önce bütün kararları topluyoruz.
+	local tmp; tmp="$(mktemp)"
+	local jobs="${UW_PROBE_JOBS:-8}" queued=0
+
+	queue_domain() { # kaynak, alan-adı
+		while [ "$(jobs -rp | wc -l)" -ge "$jobs" ]; do
+			wait -n 2>/dev/null || break
+		done
+		{ printf '%s\t%s\t%s\n' "$1" "$2" "$(verify_one "$2")" >> "$tmp"; } &
+		queued=$((queued + 1))
+	}
+
+	collect() { # dosya, kaynak
+		local file="$1" src="$2" dom
+		[ -f "$file" ] || return 0
+		while read -r dom; do
+			[ -n "$dom" ] || continue
+			hostlist_valid_domain "$dom" || continue
+			queue_domain "$src" "$dom"
+		done < <(grep -vE '^[[:space:]]*(#|$)' "$file" 2>/dev/null || true)
+	}
+
+	if [ "$#" -gt 0 ]; then
+		local d
+		for d in "$@"; do
+			hostlist_valid_domain "$d" || die "geçersiz alan adı: $d"
+			queue_domain "arg" "$d"
+		done
+	else
+		collect "$pending" pending
+		[ "$all" = 1 ] && collect "$verified" verified
+	fi
+	[ "$queued" -gt 0 ] || { rm -f "$tmp"; printf 'checked=0 blocked=0 false_positive=0 dropped=0 still_blocked=0\n'; return 0; }
+	info "$queued alan adı ölçülüyor ($jobs paralel)..."
+	wait
+
+	# --- 2. aşama: kararların uygulanması (sırayla) ---
+	local src dom verdict times n_ok=0 n_fp=0 n_drop=0 n_still=0
+	while IFS=$'\t' read -r src dom verdict; do
+		[ -n "$dom" ] || continue
+		case "$verdict" in
+		false-positive)
+			case "$src" in
+			pending)  hostlist_drop "$pending" "$dom" ;;
+			verified) hostlist_drop "$verified" "$dom" ;;
+			esac
+			# Kalıcı olarak dışlamayı yalnızca YENİ öğrenilen (karantina)
+			# girdiler için yapıyoruz. Kalıcı listeden düşen bir alan adı
+			# bir zamanlar "engelli" sayılmış demektir; ölçümümüz TCP/443
+			# üzerinden yapıldığı için yalnızca QUIC'i engellenen bir
+			# domain burada "açılıyor" görünebilir - böyle bir şeyi
+			# sessizce ve kalıcı olarak dışlamak, sonradan teşhisi çok zor
+			# bir arızaya dönüşür. Sadece siliyoruz; gerçekten gerekiyorsa
+			# motor yeniden öğrenir.
+			if [ "$src" = pending ]; then
+				times="$(cleared_bump "$dom")"
+				if [ "$times" -ge 2 ]; then
+					hostlist_append "$exclude" "$dom"
+					verdict="false-positive-excluded"
+				fi
+			fi
+			n_fp=$((n_fp + 1))
+			;;
+		blocked|still-blocked)
+			if [ "$src" = pending ]; then
+				hostlist_append "$verified" "$dom"
+				hostlist_drop "$pending" "$dom"
+			fi
+			[ "$verdict" = blocked ] && n_ok=$((n_ok + 1)) || n_still=$((n_still + 1))
+			;;
+		skipped-ip)
+			:
+			;;
+		unreachable)
+			# Ne atlatmayla ne atlatmasız açılıyor ve imza DPI'a benzemiyor:
+			# listede tutmanın faydası yok. Dışlama listesine yazmıyoruz;
+			# gerçekten engellenmeye başlarsa motor yeniden öğrenebilsin.
+			case "$src" in
+			pending)  hostlist_drop "$pending" "$dom" ;;
+			verified) hostlist_drop "$verified" "$dom" ;;
+			esac
+			n_drop=$((n_drop + 1))
+			;;
+		esac
+		printf 'domain=%s verdict=%s\n' "$dom" "$verdict"
+	done < "$tmp"
+	rm -f "$tmp"
+
+	printf 'checked=%s blocked=%s false_positive=%s dropped=%s still_blocked=%s\n' \
+		"$queued" "$n_ok" "$n_fp" "$n_drop" "$n_still"
+	return 0
+}
+
+# Düzenli doğrulama zamanlayıcısı (systemd/unwall-verify.timer).
+# Kurulum hiçbir şeyi kendiliğinden etkinleştirmiyor; bu, arayüzdeki
+# anahtarın karşılığı.
+VERIFY_TIMER="unwall-verify.timer"
+
+cmd_verify_timer() {
+	case "${1:-status}" in
+	on)
+		need_root
+		systemctl enable --now "$VERIFY_TIMER" ||
+			die "zamanlayıcı etkinleştirilemedi ($VERIFY_TIMER)"
+		info "otomatik doğrulama açık (saatte bir)"
+		;;
+	off)
+		need_root
+		systemctl disable --now "$VERIFY_TIMER" >/dev/null 2>&1 || true
+		info "otomatik doğrulama kapalı"
+		;;
+	status)
+		# systemctl is-enabled birim yokken "not-found" YAZAR ve 1 döner;
+		# grep -c eşleşme yokken "0" yazıp yine 1 döner. İkisinde de
+		# "|| echo ..." ikinci bir satır basardı.
+		local st n
+		st="$(systemctl is-enabled "$VERIFY_TIMER" 2>/dev/null || true)"
+		case "$st" in enabled) ;; *) st="disabled" ;; esac
+		n="$(grep -cvE '^[[:space:]]*(#|$)' "$(hostlist_file pending)" 2>/dev/null || true)"
+		[ -n "$n" ] || n=0
+		printf 'timer=%s\npending=%s\n' "$st" "$n"
+		;;
+	*) die "kullanım: verify-timer {on|off|status}" ;;
 	esac
 }
 
@@ -1988,6 +2348,8 @@ Kullanım: unwallctl <komut> [argüman]
   hostlist show LISTE       liste içeriği (manual|auto|exclude)
   hostlist add LISTE ALAN   listeye alan adı ekle       (root)
   hostlist remove LISTE ALAN  listeden alan adı sil     (root)
+  verify [--all] [ALAN ...] öğrenilen alan adlarını ölçüp doğrula (root)
+  verify-timer on|off|status  düzenli doğrulamayı aç/kapat     (root)
   dns status [--probe]      şifreli DNS durumu
   dns test                  şifreli DNS'i sına
   dns enable [sağlayıcı] [arka-uç]   DoT/DoH aç      (root)
@@ -2028,6 +2390,8 @@ main() {
 	blockcheck-results) cmd_blockcheck_results "$@" ;;
 	conncheck)    cmd_conncheck "$@" ;;
 	hostlist)     cmd_hostlist "$@" ;;
+	verify)       cmd_verify "$@" ;;
+	verify-timer) cmd_verify_timer "$@" ;;
 	dns)          cmd_dns "$@" ;;
 	doctor)       cmd_doctor ;;
 	conflicts)    cmd_conflicts ;;

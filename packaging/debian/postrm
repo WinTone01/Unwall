@@ -4,6 +4,7 @@ set -e
 case "$1" in
 purge)
 	rm -rf /etc/unwall /opt/unwall /var/log/unwall
+	id -u unwall-probe >/dev/null 2>&1 && userdel unwall-probe >/dev/null 2>&1 || true
 	rm -f /etc/modules-load.d/unwall.conf
 	rm -f /etc/systemd/resolved.conf.d/90-unwall.conf
 	;;

@@ -1,0 +1,12 @@
+[Unit]
+Description=Unwall - öğrenilen alan adlarını ölç ve doğrula
+Documentation=https://github.com/WinTone01/Unwall
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# --auto: motor çalışmıyorsa ya da karantina boşsa hata vermeden çıkar.
+# Ölçüm, listeleri değiştirdikten sonra motoru yeniden başlatmaz; zapret2
+# hostlist dosyalarını kendiliğinden yeniden yükler.
+ExecStart=@BINDIR@/unwallctl verify --auto

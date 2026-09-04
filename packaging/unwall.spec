@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        1.4.3
+Version:        1.5.0
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -72,12 +72,20 @@ install -Dm644 etc/unwall.conf %{buildroot}%{_sysconfdir}/unwall/unwall.conf
 install -Dm644 hostlist.txt %{buildroot}%{_sysconfdir}/unwall/hostlist.txt
 install -Dm644 excludelist.txt %{buildroot}%{_sysconfdir}/unwall/excludelist.txt
 install -Dm644 autohostlist.txt %{buildroot}%{_sysconfdir}/unwall/autohostlist.txt
+: > %{buildroot}%{_sysconfdir}/unwall/autohostlist-pending.txt
+chmod 0644 %{buildroot}%{_sysconfdir}/unwall/autohostlist-pending.txt
 
 sed -e 's|@BINDIR@|%{_bindir}|g' -e 's|@ETCDIR@|%{_sysconfdir}/unwall|g' \
 	-e 's|@LOGDIR@|/var/log/unwall|g' systemd/unwall.service \
 	> %{_builddir}/unwall.service
 install -Dm644 %{_builddir}/unwall.service \
 	%{buildroot}/usr/lib/systemd/system/unwall.service
+sed -e 's|@BINDIR@|/usr/bin|g' systemd/unwall-verify.service \
+	> %{_builddir}/unwall-verify.service
+install -Dm644 %{_builddir}/unwall-verify.service \
+	%{buildroot}/usr/lib/systemd/system/unwall-verify.service
+install -Dm644 systemd/unwall-verify.timer \
+	%{buildroot}/usr/lib/systemd/system/unwall-verify.timer
 
 sed 's|@BINDIR@|%{_bindir}|g' polkit/io.github.WinTone01.Unwall.policy \
 	> %{_builddir}/io.github.WinTone01.Unwall.policy
@@ -96,6 +104,14 @@ install -Dm644 %{_builddir}/unwall-modules.conf \
 	%{buildroot}%{_prefix}/lib/modules-load.d/unwall.conf
 
 %post
+# Ölçüm kullanıcısı (ayrıcalıksız, ev dizinsiz): "bu site DPI atlatma
+# olmadan da açılıyor mu?" ölçümünde trafiği işaretlemek için kullanılır
+# (bkz. unwallctl verify).
+if ! id -u unwall-probe >/dev/null 2>&1; then
+	useradd --system --no-create-home --shell /usr/sbin/nologin \
+		--comment 'Unwall probe' unwall-probe >/dev/null 2>&1 ||
+		useradd -r -M -s /sbin/nologin unwall-probe >/dev/null 2>&1 || :
+fi
 # Kasıtlı olarak %%systemd_post kullanmıyoruz: o makro preset politikasına
 # göre servisi etkinleştirebilir. Bu paket hiçbir servisi kendiliğinden
 # başlatmaz/etkinleştirmez; hepsi arayüzden ya da elle yapılır.
@@ -123,6 +139,7 @@ fi
 
 %preun
 if [ "$1" -eq 0 ]; then
+	systemctl disable --now unwall-verify.timer >/dev/null 2>&1 || :
 	systemctl disable --now unwall.service >/dev/null 2>&1 || :
 	if [ -x %{_bindir}/unwallctl ]; then
 		unwallctl nft-flush >/dev/null 2>&1 || :
@@ -153,7 +170,10 @@ fi
 %config(noreplace) %{_sysconfdir}/unwall/hostlist.txt
 %config(noreplace) %{_sysconfdir}/unwall/excludelist.txt
 %config(noreplace) %{_sysconfdir}/unwall/autohostlist.txt
+%config(noreplace) %{_sysconfdir}/unwall/autohostlist-pending.txt
 /usr/lib/systemd/system/unwall.service
+/usr/lib/systemd/system/unwall-verify.service
+/usr/lib/systemd/system/unwall-verify.timer
 %{_datadir}/polkit-1/actions/io.github.WinTone01.Unwall.policy
 %{_datadir}/applications/io.github.WinTone01.Unwall.desktop
 %{_datadir}/icons/hicolor/scalable/apps/io.github.WinTone01.Unwall.svg
@@ -161,6 +181,13 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Fri Sep 04 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.5.0-1
+- Auto-learned domains are verified by measurement before they become permanent. The engine's failure detector cannot tell a blocked site from one that is briefly down, an unanswered telemetry endpoint or a wifi hiccup, and with the fail threshold lowered to 1 in 1.3.6 a single failure was enough: on a real machine 368 of 497 learned entries (74%%) had never been blocked. Applying a strategy to those can break them.
+- New learnings go to /etc/unwall/autohostlist-pending.txt (quarantine) and reach autohostlist.txt only after "unwallctl verify" opens two connections to the domain - one with the bypass, one without, through a dedicated unprivileged unwall-probe user whose traffic carries the engine's fwmark and therefore skips the queue - and sees the difference.
+- Four verdicts: false-positive (removed), blocked (promoted), still-blocked (kept; the block is real but the strategy does not beat it) and unreachable (removed). Raw IP entries are skipped: https://<ip> always fails certificate validation.
+- unwall-verify.timer runs the check hourly when enabled; nothing is enabled automatically. The Lists page gained the quarantine list, a Verify button and a switch.
+- The fail threshold default is now 2 and configurable via AUTO_FAIL_THRESHOLD; AUTO_VERIFY=0 restores the old direct-write behaviour.
+- Fix hostlist.txt being ignored in auto mode: only --hostlist-auto was passed, so manually added domains never reached the engine.
 * Thu Sep 04 2026 WinTone01 <wintone01@users.noreply.github.com> - 1.4.3-1
 - Status page fits in the window again (compact hero, single-line value rows) and the Lists page no longer renders hundreds of rows: lists are collapsible, capped, and searchable across the full list.
 - New: connection test button, notification when hostlist-auto learns a domain, a chooser for every working strategy blockcheck found, and a one-time explanation that closing the window does not stop protection.

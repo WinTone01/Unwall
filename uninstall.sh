@@ -84,6 +84,7 @@ fi
 
 # --- 1. servis ve ağ kuralları ---
 step "servis durduruluyor"
+systemctl disable --now unwall-verify.timer >/dev/null 2>&1 || true
 systemctl disable --now unwall.service >/dev/null 2>&1 || true
 systemctl reset-failed unwall.service >/dev/null 2>&1 || true
 
@@ -120,6 +121,12 @@ elif [ -f "$DNSCRYPT_CONF" ] && grep -qs "unwall" "$DNSCRYPT_CONF"; then
 	note "bize ait dnscrypt-proxy yapılandırması silindi (yedek yoktu)"
 fi
 
+# Ölçüm kullanıcısı (bkz. install.sh): hiçbir dosyası yok, silinmesi güvenli.
+if id -u unwall-probe >/dev/null 2>&1; then
+	userdel unwall-probe >/dev/null 2>&1 || true
+	note "silindi: unwall-probe kullanıcısı"
+fi
+
 systemctl restart systemd-resolved >/dev/null 2>&1 || true
 resolvectl flush-caches >/dev/null 2>&1 || true
 
@@ -145,6 +152,8 @@ for p in $PREFIXES; do
 done
 rm -f /etc/systemd/system/unwall.service
 rm -f /usr/lib/systemd/system/unwall.service
+rm -f /etc/systemd/system/unwall-verify.service /etc/systemd/system/unwall-verify.timer
+rm -f /usr/lib/systemd/system/unwall-verify.service /usr/lib/systemd/system/unwall-verify.timer
 rm -f /usr/share/polkit-1/actions/io.github.WinTone01.Unwall.policy
 rm -f /usr/share/applications/io.github.WinTone01.Unwall.desktop
 rm -f /usr/share/applications/unwall.desktop

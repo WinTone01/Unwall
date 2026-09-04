@@ -40,6 +40,7 @@ cat > "$ROOT/DEBIAN/conffiles" <<EOF
 /etc/unwall/hostlist.txt
 /etc/unwall/excludelist.txt
 /etc/unwall/autohostlist.txt
+/etc/unwall/autohostlist-pending.txt
 EOF
 
 install -m 0755 "$SRC/bin/unwallctl" "$ROOT/usr/bin/unwallctl"
@@ -60,9 +61,14 @@ install -m 0644 "$SRC/etc/unwall.conf" "$ROOT/etc/unwall/unwall.conf"
 install -m 0644 "$SRC/hostlist.txt" "$ROOT/etc/unwall/hostlist.txt"
 install -m 0644 "$SRC/excludelist.txt" "$ROOT/etc/unwall/excludelist.txt"
 install -m 0644 "$SRC/autohostlist.txt" "$ROOT/etc/unwall/autohostlist.txt"
+: > "$ROOT/etc/unwall/autohostlist-pending.txt"
+chmod 0644 "$ROOT/etc/unwall/autohostlist-pending.txt"
 
 sed -e "s|@BINDIR@|/usr/bin|g" -e "s|@ETCDIR@|/etc/unwall|g" -e "s|@LOGDIR@|/var/log/unwall|g" \
 	"$SRC/systemd/unwall.service" > "$ROOT/usr/lib/systemd/system/unwall.service"
+sed -e 's|@BINDIR@|/usr/bin|g' \
+	"$SRC/systemd/unwall-verify.service" > "$ROOT/usr/lib/systemd/system/unwall-verify.service"
+install -m 0644 "$SRC/systemd/unwall-verify.timer" "$ROOT/usr/lib/systemd/system/unwall-verify.timer"
 
 sed "s|@BINDIR@|/usr/bin|g" "$SRC/polkit/io.github.WinTone01.Unwall.policy" \
 	> "$ROOT/usr/share/polkit-1/actions/io.github.WinTone01.Unwall.policy"

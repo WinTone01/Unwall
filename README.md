@@ -204,12 +204,66 @@ sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
 | `sudo unwallctl disable-conflicts` | shut down conflicting DPI tools |
 | `unwallctl print-cmd`, `print-nft` | show the generated command and rules |
 | `unwallctl conncheck [domains]` | try a real TLS handshake against a few targets |
+| `sudo unwallctl verify [--all]` | measure learned domains and verify them (drops false positives) |
+| `sudo unwallctl verify-timer on\|off` | turn periodic verification on / off |
 | `unwallctl blockcheck-results [engine]` | list every working strategy from the last blockcheck |
 | `unwallctl update-check` | check GitHub for a newer release (key=value) |
 | `sudo unwallctl self-update [version]` | download and install a release (defaults to latest) |
 
 **Configuration**: `/etc/unwall/unwall.conf`
-**Lists**: `/etc/unwall/{hostlist,excludelist,autohostlist}.txt`
+**Lists**: `/etc/unwall/{hostlist,excludelist,autohostlist,autohostlist-pending}.txt`
+
+### Auto-learning and false positives
+
+With `HOSTLIST_MODE=auto` the engine learns which domains look blocked by
+itself. That detection is a guess: a failed connection does not mean a
+blocked one. A site that is briefly down, a wifi hiccup or a telemetry
+endpoint that never answers all look the same. Over time the list fills up
+with domains that were never blocked — on one test machine, 368 of 497
+entries (74%) were exactly that: `ping.archlinux.org`,
+`connectivitycheck.gstatic.com`, `csi.gstatic.com`,
+`incoming.telemetry.mozilla.org`, …
+
+That is not just noise: applying a strategy to a domain that is not blocked
+can break it.
+
+Since v1.5, learned domains no longer go straight into the permanent list:
+
+1. **Quarantine.** New learnings are written to
+   `autohostlist-pending.txt`. The strategy is applied to those domains too
+   (so nothing gets slower), but they only reach the permanent
+   `autohostlist.txt` once verified.
+2. **Measurement.** `unwallctl verify` opens two connections per domain: one
+   **without** the DPI bypass and one normally. The bypass-free one never
+   enters the nftables queue because a rule marks the traffic of a dedicated
+   system user (`unwall-probe`) with the engine's own fwmark — so the
+   measurement needs no rule teardown and does not disturb live traffic.
+3. **Verdict.** One of four:
+
+| Verdict | Meaning | Action |
+|---|---|---|
+| `false-positive` | opens fine without the bypass | removed (a second clearing from quarantine also adds it to the exclude list) |
+| `blocked` | closed without the bypass, open with it | promoted to the permanent list |
+| `still-blocked` | closed both ways, signature looks like interference | kept — **the block is real but the strategy does not beat it** |
+| `unreachable` | closed both ways, signature does not look like DPI | removed (dead host) |
+
+```bash
+sudo unwallctl verify          # verify what is in quarantine
+sudo unwallctl verify --all    # audit the permanent list as well
+sudo unwallctl verify-timer on # do it automatically, hourly
+```
+
+Hostlists are reloaded by the engine as soon as they change; no restart is
+needed.
+
+> [!NOTE]
+> The measurement runs over TCP/443. A domain that is only blocked over QUIC
+> can look reachable here, which is why entries dropped from the **permanent**
+> list are never auto-excluded — they are only removed, and the engine can
+> learn them again. To pin a domain permanently, put it in `hostlist.txt`:
+> `verify` never touches that file. Raw IP entries are skipped as well
+> (`https://<ip>` always fails certificate validation).
+
 **Logs**: `journalctl -u unwall -f` and `/var/log/unwall/`
 
 The GUI checks GitHub for a newer release once a day in the background (no

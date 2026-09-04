@@ -109,3 +109,72 @@ LOG
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | wc -l)" -eq 0 ]
 }
+
+# --- ogrenilen alan adlarinin dogrulanmasi (v1.5) ---
+
+@test "is_ip_literal ham IP'leri tanir, alan adlarini tanimaz" {
+  load_fn is_ip_literal
+  run is_ip_literal 192.168.1.1
+  [ "$status" -eq 0 ]
+  run is_ip_literal 102.67.167.245
+  [ "$status" -eq 0 ]
+  run is_ip_literal 2001:db8::1
+  [ "$status" -eq 0 ]
+  run is_ip_literal example.com
+  [ "$status" -ne 0 ]
+  # rakamla baslayan alan adi IP degildir
+  run is_ip_literal 35212.ms.vk.ru
+  [ "$status" -ne 0 ]
+}
+
+@test "hostlist_file karantina listesini de bilir" {
+  load_fn hostlist_file
+  UW_ETC=/tmp/uwtest
+  [ "$(hostlist_file pending)" = "/tmp/uwtest/autohostlist-pending.txt" ]
+  [ "$(hostlist_file auto)"    = "/tmp/uwtest/autohostlist.txt" ]
+  run hostlist_file yok
+  [ "$status" -ne 0 ]
+}
+
+@test "hostlist_append ayni alan adini iki kez yazmaz" {
+  load_fn hostlist_append
+  f="$BATS_TEST_TMPDIR/list.txt"
+  hostlist_append "$f" example.com
+  hostlist_append "$f" example.com
+  hostlist_append "$f" other.com
+  [ "$(grep -c . "$f")" -eq 2 ]
+}
+
+@test "hostlist_drop yalnizca tam eslesen satiri siler" {
+  load_fn hostlist_drop
+  f="$BATS_TEST_TMPDIR/list.txt"
+  printf 'example.com\nwww.example.com\nother.com\n' > "$f"
+  hostlist_drop "$f" example.com
+  [ "$(grep -c . "$f")" -eq 2 ]
+  grep -qx 'www.example.com' "$f"
+  grep -qx 'other.com' "$f"
+}
+
+@test "hostlist_drop dosyanin kendisini korur (mv degil, icerik kopyalanir)" {
+  load_fn hostlist_drop
+  f="$BATS_TEST_TMPDIR/list.txt"
+  printf 'a.com\nb.com\n' > "$f"
+  before="$(stat -c %i "$f")"
+  hostlist_drop "$f" a.com
+  # ayni inode: motorun acik tuttugu dosya/sahiplik bozulmamali
+  [ "$(stat -c %i "$f")" = "$before" ]
+}
+
+@test "cleared_count/cleared_bump temizlenme sayisini takip eder" {
+  load_fn cleared_count
+  load_fn cleared_bump
+  CLEARED_STATE="$BATS_TEST_TMPDIR/cleared"
+  [ "$(cleared_count example.com)" = "0" ]
+  [ "$(cleared_bump example.com)" = "1" ]
+  [ "$(cleared_bump example.com)" = "2" ]
+  [ "$(cleared_count example.com)" = "2" ]
+  # baska bir alan adi etkilenmez
+  [ "$(cleared_count other.com)" = "0" ]
+  [ "$(cleared_bump other.com)" = "1" ]
+  [ "$(cleared_count example.com)" = "2" ]
+}

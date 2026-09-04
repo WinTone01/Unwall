@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk, Pango  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "1.4.3"
+VERSION = "1.5.0"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -120,6 +120,20 @@ TR = {
     'Checks the encrypted channel and interference': 'Şifreli kanal ve müdahale kontrolü',
     'Conflicting DPI tool running: {}': 'Çakışan DPI aracı çalışıyor: {}',
     'DNS check': 'DNS kontrolü',
+    'Auto-learned, verified': 'Otomatik öğrenilen (doğrulanmış)',
+    'Learning — waiting to be verified': 'Öğreniliyor — doğrulanmayı bekliyor',
+    'Verify learned domains': 'Öğrenilenleri doğrula',
+    'Measures each domain with and without the bypass; drops the ones that were never blocked': 'Her alan adını atlatmayla ve atlatmasız ölçer; hiç engelli olmayanları listeden düşürür',
+    'Verify': 'Doğrula',
+    'Audit the whole list': 'Tüm listeyi denetle',
+    'Verify automatically': 'Otomatik doğrula',
+    'Checks newly learned domains every hour': 'Yeni öğrenilen alan adlarını saatte bir denetler',
+    'verify learned domains': 'öğrenilenleri doğrula',
+    'Verification finished — see the Log page': 'Doğrulama tamamlandı — ayrıntılar Günlük sayfasında',
+    '{} domains waiting': '{} alan adı bekliyor',
+    'nothing waiting': 'bekleyen yok',
+    'audit every list': 'tüm listeleri denetle',
+    'automatic verification': 'otomatik doğrulama',
     'DNS redirect: {}': 'DNS yönlendirme: {}',
     'device DNS not redirected': 'cihaz DNS\'i yönlendirilmiyor',
     'DNS is being tampered with - use DoH/DoT': 'DNS müdahalesi var — DoH/DoT kullanın',
@@ -321,7 +335,11 @@ LIST_PAGE_SIZE = 60
 
 LIST_TARGETS = [
     ("manual", T("Manual list (hostlist.txt)")),
-    ("auto", T("Auto-learned (autohostlist.txt)")),
+    ("auto", T("Auto-learned, verified")),
+    # Motorun yeni öğrendikleri. Ölçülüp gerçekten engelli oldukları
+    # doğrulanana kadar burada bekler; yanlış pozitifler kalıcı listeye
+    # hiç geçmez (bkz. "unwallctl verify").
+    ("pending", T("Learning — waiting to be verified")),
     ("exclude", T("Excluded (excludelist.txt)")),
 ]
 
@@ -916,6 +934,36 @@ class Window(Adw.ApplicationWindow):
         g_search.add(self.entry_search)
         page.add(g_search)
 
+        # Ölçüm: "bu alan adı gerçekten engelli mi?" sorusunu tahminle
+        # değil, atlatmalı/atlatmasız iki bağlantıyı karşılaştırarak
+        # cevaplar. Yanlış pozitifleri listeden düşüren şey bu.
+        g_verify = Adw.PreferencesGroup(
+            title=T("Verify learned domains"),
+            description=T(
+                "Measures each domain with and without the bypass; drops the "
+                "ones that were never blocked"
+            ),
+        )
+        row_verify = Adw.ActionRow(title=T("Verify"), subtitle="—")
+        self.row_verify = row_verify
+        btn_verify = Gtk.Button(label=T("Verify"), valign=Gtk.Align.CENTER)
+        btn_verify.connect("clicked", lambda *_: self.on_verify(False))
+        row_verify.add_suffix(btn_verify)
+        btn_audit = Gtk.Button(label=T("Audit the whole list"),
+                               valign=Gtk.Align.CENTER)
+        btn_audit.connect("clicked", lambda *_: self.on_verify(True))
+        row_verify.add_suffix(btn_audit)
+        g_verify.add(row_verify)
+
+        self.row_verify_timer = Adw.SwitchRow(
+            title=T("Verify automatically"),
+            subtitle=T("Checks newly learned domains every hour"),
+        )
+        self.row_verify_timer.connect(
+            "notify::active", lambda *_: self.on_verify_timer_toggled())
+        g_verify.add(self.row_verify_timer)
+        page.add(g_verify)
+
         self.list_groups = {}
         self.list_expanders = {}
         self.list_rows = {}
@@ -1347,6 +1395,7 @@ class Window(Adw.ApplicationWindow):
             self.row_gateway.set_active(self.config.get("GATEWAY_MODE") == "1")
         self.row_autostart.set_active(self.status.get("enabled") == "1")
         self._refresh_dns()
+        self._refresh_verify()
         self._loading = False
 
         running = self.status.get("running") == "1"
@@ -1617,6 +1666,51 @@ class Window(Adw.ApplicationWindow):
         self.log("\n=== " + T("diagnostics") + " ===")
         self.log(out.strip())
         self.toast(T("Diagnostics finished") if code == 0 else T("Problems found, see the output"))
+
+    def on_verify(self, audit_all):
+        """Öğrenilen alan adlarını ölçer. Ölçüm ağ beklemesi içerdiği için
+        (birkaç yüz girdide dakikalar sürebilir) ayrıcalıklı çağrının kendi
+        async akışını kullanıyoruz; sonuç çıktıya akar."""
+        args = ["verify"]
+        if audit_all:
+            args.append("--all")
+        # done geri çağrısı yalnızca çıkış kodunu alıyor; ölçümün satır satır
+        # çıktısı Günlük sayfasına akıyor, özeti de son satırında.
+        self.run_privileged(
+            args,
+            done=lambda code: self._verify_done(code),
+            title=T("audit every list") if audit_all
+            else T("verify learned domains"),
+        )
+
+    def _verify_done(self, code):
+        if code == 0:
+            self.toast(T("Verification finished — see the Log page"))
+        self._refresh_lists()
+        self._refresh_verify()
+
+    def on_verify_timer_toggled(self):
+        if self._loading:
+            return
+        self.run_privileged(
+            ["verify-timer", "on" if self.row_verify_timer.get_active() else "off"],
+            done=lambda *_: self._refresh_verify(),
+            title=T("automatic verification"),
+        )
+
+    def _refresh_verify(self):
+        _, out = ctl("verify-timer", "status", timeout=POLL_TIMEOUT)
+        d = parse_kv(out)
+        pending = d.get("pending", "0")
+        self.row_verify.set_subtitle(
+            T("{} domains waiting").format(pending) if pending != "0"
+            else T("nothing waiting")
+        )
+        self._loading = True
+        try:
+            self.row_verify_timer.set_active(d.get("timer") == "enabled")
+        finally:
+            self._loading = False
 
     def on_dnscheck(self, *_):
         code, out = ctl("dnscheck", timeout=20)
