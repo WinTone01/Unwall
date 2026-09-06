@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        2.0.0
+Version:        2.0.1
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -195,6 +195,10 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Sun Sep 06 2026 WinTone01 <wintone01@users.noreply.github.com> - 2.0.1-1
+- New application icon (a packet passing through a gap in a wall), flat colours instead of a gradient, legible at 16px. Ships in every package so the icon updates wherever Unwall was installed from.
+- Watchdog needs two consecutive bad checks before reporting a broken strategy: the sample is five domains and a single unlucky check was enough to trigger a strategy change under WATCHDOG_ACTION=tune.
+- GUI accepts UW_PAGE to select the page shown at startup.
 * Fri Sep 04 2026 WinTone01 <wintone01@users.noreply.github.com> - 2.0.0-1
 - Auto-tune: "unwallctl tune [--apply] [--deep]" runs candidate strategies in a second engine instance on its own queue (QNUM+1) and scores them against domains that are measured as blocked right now. Only the probe user's traffic is routed to that queue, so the connection you are using keeps working on the current strategy. Candidates are the ready-made profiles plus a parameter grid (fake TTL, split method), deduplicated by arguments; a grid winner is stored as STRATEGY=analiz plus CUSTOM_ARGS.
 - Per-network profiles: "unwallctl profile save|apply|list" remembers engine, strategy and hostlist mode per network (Wi-Fi SSID, else default gateway MAC, else router IP), and a NetworkManager dispatcher hook restores them when the network changes.

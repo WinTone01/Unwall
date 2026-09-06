@@ -48,7 +48,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/WinTone01/Unwall.git
-        tag: v2.0.0
+        tag: v2.0.1
         # Yerel geliştirme/test için tag yerine şunu kullanın:
         #   type: dir
         #   path: ..

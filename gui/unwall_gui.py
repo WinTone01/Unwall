@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk, Pango  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 

@@ -59,6 +59,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="2.0.1" date="2026-09-06">
+      <description>
+        <p>New application icon: a packet meeting a wall, most of it stopping there and one piece going through the gap - which is what the engine does when it splits a TLS message into something the DPI cannot match. Flat colours instead of the previous gradient, and legible down to 16 pixels.</p>
+        <p>The watchdog no longer calls a strategy broken after a single bad check. The sample is five domains and any one of them can be having its own outage, so a second consecutive bad check is now required before it reports a problem or, with WATCHDOG_ACTION=tune, goes looking for another strategy.</p>
+      </description>
+    </release>
     <release version="2.0.0" date="2026-09-04">
       <description>
         <p>Unwall now measures instead of guessing. Auto-tune runs candidate strategies in a second engine on its own queue and scores them against sites that are actually blocked, without disturbing the connection you are using. A watchdog notices when a strategy stops working and can search for a new one on its own. Strategies are remembered per network, so home, a mobile hotspot and a school network each keep what works there.</p>
