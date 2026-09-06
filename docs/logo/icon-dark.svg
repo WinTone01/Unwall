@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Unwall — gedikten geçen paket (koyu)</title>
+  <g id="ground"><rect width="512" height="512" rx="116" fill="#14202B"/></g>
+  <g id="icon">
+    <g fill="#F2F0EA">
+      <rect x="322" y="104" width="58" height="112" rx="29"/>
+      <rect x="322" y="296" width="58" height="112" rx="29"/>
+    </g>
+    <rect x="78" y="126" width="204" height="62" rx="31" fill="#F2F0EA"/>
+    <rect x="78" y="324" width="204" height="62" rx="31" fill="#F2F0EA"/>
+    <rect x="78" y="225" width="356" height="62" rx="31" fill="#FF6B35"/>
+  </g>
+</svg>

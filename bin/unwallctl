@@ -2476,9 +2476,16 @@ cmd_tune() {
 
 WATCHDOG_STATE="$UW_ETC/.watchdog"
 
-watchdog_write_state() { # verdict, ok, total
-	printf 'verdict=%s\nok=%s\ntotal=%s\nts=%s\nstrategy=%s\n' \
-		"$1" "$2" "$3" "$(date +%s)" "$STRATEGY" > "$WATCHDOG_STATE" 2>/dev/null || true
+watchdog_write_state() { # verdict, ok, total, ustuste_kotu
+	printf 'verdict=%s\nok=%s\ntotal=%s\nts=%s\nstrategy=%s\nbad_streak=%s\n' \
+		"$1" "$2" "$3" "$(date +%s)" "$STRATEGY" "$4" \
+		> "$WATCHDOG_STATE" 2>/dev/null || true
+}
+
+watchdog_bad_streak() {
+	local n
+	n="$(sed -n 's/^bad_streak=//p' "$WATCHDOG_STATE" 2>/dev/null)"
+	printf '%s' "${n:-0}"
 }
 
 cmd_watchdog() {
@@ -2514,13 +2521,28 @@ cmd_watchdog() {
 		probe_https "$dom" engine >/dev/null && ok=$((ok + 1))
 	done
 
-	local verdict="ok"
-	# Yarısından azı açılıyorsa strateji bozulmuş sayılır. Tek bir
-	# başarısızlık, sitenin kendi arızası da olabilir - bu yüzden oran.
-	[ $((ok * 2)) -lt "$total" ] && verdict="degraded"
-	watchdog_write_state "$verdict" "$ok" "$total"
-	printf 'verdict=%s ok=%s total=%s strategy=%s\n' "$verdict" "$ok" "$total" "$STRATEGY"
+	# Yarısından azı açılıyorsa bu ölçüm kötüdür. Ama tek bir kötü ölçüm
+	# "strateji bozuldu" demek DEĞİL: örneklem beş alan adı ve içlerinden
+	# biri o an kendi arızasını yaşıyor olabilir. Ölçüldü: aynı dakikalarda
+	# arka arkaya yapılan iki denetim 5/5 ve 2/5 verebiliyor. Bu yüzden
+	# "bozuk" kararı ÜST ÜSTE iki kötü ölçüm istiyor - özellikle
+	# WATCHDOG_ACTION=tune ise, çünkü orada karar stratejiyi değiştiriyor.
+	local verdict="ok" streak=0
+	if [ $((ok * 2)) -lt "$total" ]; then
+		streak=$(( $(watchdog_bad_streak) + 1 ))
+		if [ "$streak" -ge 2 ]; then
+			verdict="degraded"
+		else
+			verdict="suspect"
+		fi
+	fi
+	watchdog_write_state "$verdict" "$ok" "$total" "$streak"
+	printf 'verdict=%s ok=%s total=%s strategy=%s bad_streak=%s\n' \
+		"$verdict" "$ok" "$total" "$STRATEGY" "$streak"
 
+	if [ "$verdict" = "suspect" ]; then
+		warn "bu denetimde $ok/$total açıldı; karar vermeden önce bir denetim daha bekleniyor"
+	fi
 	if [ "$verdict" = "degraded" ]; then
 		warn "strateji bozulmuş görünüyor ($ok/$total açıldı, strateji: $STRATEGY)"
 		if [ "${WATCHDOG_ACTION:-notify}" = "tune" ]; then

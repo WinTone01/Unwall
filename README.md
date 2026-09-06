@@ -22,7 +22,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/gui-en.png" alt="Unwall — status, engine/strategy, filtering, encrypted DNS, gateway mode and service" width="360">
+  <img src="docs/screenshots/gui-en.png" alt="Unwall — status page: carrier, engine, strategy, encrypted DNS and gateway mode" width="330">
+  <img src="docs/screenshots/health-en.png" alt="Unwall — health page: strategy check, auto-tune, network profile and hotspot" width="330">
+</p>
+
+<p align="center">
+  <sub>Status · Health (v2.0: measurement, auto-tune, watchdog, per-network profiles, hotspot)</sub>
 </p>
 
 ---
@@ -487,8 +492,11 @@ sudo unwallctl watchdog            # check now
 sudo unwallctl watchdog-timer on   # check every 30 minutes
 ```
 
-If fewer than half open, the strategy counts as broken (a single failure can
-just be that site, hence the ratio). With `WATCHDOG_ACTION=tune` it runs
+Fewer than half opening makes that check bad — but the "broken" verdict needs
+**two bad checks in a row**. The sample is five domains and one of them can be
+having its own outage: measured, two checks minutes apart returned 5/5 and 2/5.
+Letting a single unlucky check change the strategy (`WATCHDOG_ACTION=tune`)
+would be noise, not improvement. With `WATCHDOG_ACTION=tune` it runs
 auto-tune and applies the winner; the default `notify` only reports, to the
 GUI's Health page and `journalctl -u unwall-watchdog`.
 

@@ -22,7 +22,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/gui-tr.png" alt="Unwall — durum, motor/strateji, filtreleme, şifreli DNS, ağ geçidi modu ve servis" width="360">
+  <img src="docs/screenshots/gui-tr.png" alt="Unwall — durum sayfası: operatör, motor, strateji, şifreli DNS ve ağ geçidi modu" width="330">
+  <img src="docs/screenshots/health-tr.png" alt="Unwall — sağlık sayfası: strateji denetimi, auto-tune, ağ profili ve hotspot" width="330">
+</p>
+
+<p align="center">
+  <sub>Durum · Sağlık (v2.0: ölçüm, auto-tune, nöbetçi, ağ profili, hotspot)</sub>
 </p>
 
 ---
@@ -486,8 +491,12 @@ sudo unwallctl watchdog            # şimdi ölç
 sudo unwallctl watchdog-timer on   # yarım saatte bir ölç
 ```
 
-Yarısından azı açılıyorsa strateji bozulmuş sayılır (tek bir başarısızlık
-sitenin kendi arızası da olabilir, bu yüzden oran). `WATCHDOG_ACTION=tune`
+Yarısından azı açılıyorsa bu ölçüm kötüdür - ama "bozuk" kararı **üst üste
+iki kötü ölçüm** ister. Örneklem beş alan adı ve içlerinden biri o an kendi
+arızasını yaşıyor olabilir: ölçüldü, aynı dakikalarda arka arkaya yapılan iki
+denetim 5/5 ve 2/5 verebiliyor. Tek bir şanssız denetimin stratejiyi
+değiştirmesi (`WATCHDOG_ACTION=tune`) iyileştirme değil, gürültü olurdu.
+`WATCHDOG_ACTION=tune`
 ise auto-tune çalıştırılıp en iyi aday uygulanır; varsayılan `notify`, yani
 yalnızca haber verilir (arayüzün Sağlık sayfası ve `journalctl -u
 unwall-watchdog`).

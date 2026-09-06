@@ -283,3 +283,15 @@ CONF
   [ "$(curl_class 47)" = "other" ]
   [ "$(curl_class 0)"  = "other" ]
 }
+
+@test "watchdog_bad_streak durum dosyasindaki sayaci okur" {
+  load_fn watchdog_bad_streak
+  WATCHDOG_STATE="$BATS_TEST_TMPDIR/wd"
+  # dosya yokken 0
+  [ "$(watchdog_bad_streak)" = "0" ]
+  printf 'verdict=suspect\nok=2\ntotal=5\nbad_streak=1\n' > "$WATCHDOG_STATE"
+  [ "$(watchdog_bad_streak)" = "1" ]
+  # alan yoksa yine 0 (eski surumden kalma durum dosyasi)
+  printf 'verdict=ok\nok=5\ntotal=5\n' > "$WATCHDOG_STATE"
+  [ "$(watchdog_bad_streak)" = "0" ]
+}

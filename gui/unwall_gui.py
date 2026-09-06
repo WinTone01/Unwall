@@ -159,6 +159,7 @@ TR = {
     'working · {}/{} opened': 'çalışıyor · {}/{} açıldı',
     'broken · only {}/{} opened': 'bozuk · yalnızca {}/{} açıldı',
     'not checked yet': 'henüz denetlenmedi',
+    '{}/{} opened · checking again': '{}/{} açıldı · yeniden denetlenecek',
     '{} · saved: {}': '{} · kayıtlı: {}',
     '{} · nothing saved yet': '{} · henüz kayıt yok',
     '{} verified · {} waiting · {} manual · {} excluded': '{} doğrulanmış · {} bekleyen · {} elle · {} dışlanan',
@@ -778,6 +779,13 @@ class Window(Adw.ApplicationWindow):
         self.stack.add_titled_with_icon(
             self._page_log(), "log", T("Log"), "utilities-terminal-symbolic")
 
+        # Açılışta gösterilecek sayfa. Varsayılan "status"; UW_PAGE ile
+        # değiştirilebiliyor - belge/ekran görüntüsü üretirken ve elle test
+        # ederken doğrudan ilgili sayfayı açmak için.
+        want_page = os.environ.get("UW_PAGE", "").strip()
+        if want_page and self.stack.get_child_by_name(want_page):
+            self.stack.set_visible_child_name(want_page)
+
         self.refresh()
         self._refresh_lists()
         GLib.timeout_add_seconds(4, self._tick)
@@ -1143,6 +1151,10 @@ class Window(Adw.ApplicationWindow):
             text = T("working · {}/{} opened").format(ok, total)
         elif verdict == "degraded":
             text = T("broken · only {}/{} opened").format(ok, total)
+        elif verdict == "suspect":
+            # Tek bir kötü ölçüm henüz "bozuk" demek değil; nöbetçi bir
+            # denetim daha bekliyor (bkz. cmd_watchdog).
+            text = T("{}/{} opened · checking again").format(ok, total)
         else:
             text = T("not checked yet")
         self.row_watchdog.set_subtitle(text)
