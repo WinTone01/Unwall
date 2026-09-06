@@ -3253,7 +3253,7 @@ Kullanım: unwallctl <komut> [argüman]
   blockcheck [motor]        ISS analizi yap          (root)
   dnscheck [domain]         DNS müdahalesi kontrolü
   detect-isp                operatörü ASN'den algıla, strateji öner
-  hostlist show LISTE       liste içeriği (manual|auto|exclude)
+  hostlist show LISTE       liste içeriği (manual|auto|pending|exclude)
   hostlist add LISTE ALAN   listeye alan adı ekle       (root)
   hostlist remove LISTE ALAN  listeden alan adı sil     (root)
   verify [--all] [ALAN ...] öğrenilen alan adlarını ölçüp doğrula (root)

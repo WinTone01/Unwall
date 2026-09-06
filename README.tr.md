@@ -1,103 +1,131 @@
 <p align="center">
-  <img src="docs/logo.png" width="112" alt="Unwall">
+  <img src="docs/logo.png" width="116" alt="Unwall">
 </p>
 
 <h1 align="center">Unwall</h1>
 
 <p align="center">
-  <code>zapret</code> / <code>zapret2</code> DPI atlatma motorları için Linux kontrol paneli —
-  systemd servisi, nftables kuralları, şifreli DNS, ağ geçidi modu ve hiçbir zaman
-  root olarak çalışmayan bir GTK4 arayüz.
+  <b><code>zapret</code> / <code>zapret2</code> DPI atlatma motorları için Linux kontrol paneli.</b><br>
+  systemd servisi, nftables kuralları, şifreli DNS, ağ geçidi modu — ve hiçbir zaman root çalışmayan bir GTK4 arayüzü.
 </p>
 
 <p align="center">
-  <a href="https://github.com/WinTone01/Unwall/releases/latest"><img src="https://img.shields.io/github/v/release/WinTone01/Unwall?label=s%C3%BCr%C3%BCm" alt="Son sürüm"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/lisans-GPLv3-blue.svg" alt="Lisans: GPLv3"></a>
+  <a href="https://github.com/WinTone01/Unwall/releases/latest"><img src="https://img.shields.io/github/v/release/WinTone01/Unwall?label=s%C3%BCr%C3%BCm&color=E4572E" alt="Son sürüm"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/lisans-GPLv3-14202B" alt="Lisans: GPLv3"></a>
   <a href="https://github.com/WinTone01/Unwall/actions/workflows/ci.yml"><img src="https://github.com/WinTone01/Unwall/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/platform-Linux-informational" alt="Platform: Linux">
 </p>
 
 <p align="center">
-  <b>Türkçe</b> · <a href="README.md">English</a>
+  <a href="README.md">English</a> · <b>Türkçe</b>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/gui-tr.png" alt="Unwall — durum sayfası: operatör, motor, strateji, şifreli DNS ve ağ geçidi modu" width="330">
-  <img src="docs/screenshots/health-tr.png" alt="Unwall — sağlık sayfası: strateji denetimi, auto-tune, ağ profili ve hotspot" width="330">
+  <img src="docs/screenshots/gui-tr.png" alt="Durum sayfası: operatör, motor, strateji, şifreli DNS ve ağ geçidi modu" width="330">
+  <img src="docs/screenshots/health-tr.png" alt="Sağlık sayfası: strateji denetimi, auto-tune, ağ profili ve hotspot" width="330">
 </p>
 
 <p align="center">
-  <sub>Durum · Sağlık (v2.0: ölçüm, auto-tune, nöbetçi, ağ profili, hotspot)</sub>
+  <sub><b>Durum</b> — şu an ne çalışıyor · <b>Sağlık</b> — hâlâ çalışıyor mu, daha iyisi mümkün mü</sub>
 </p>
 
 ---
 
-Unwall, [@bol-van](https://github.com/bol-van)'ın DPI (Deep Packet Inspection)
-atlatma motorları [zapret](https://github.com/bol-van/zapret) ve
-[zapret2](https://github.com/bol-van/zapret2)'yi masaüstünde gerçekten
-kullanılabilir hale getirir. Linux'ta motor yerli çalışır: WinDivert benzeri
-bir sürücü yerine çekirdeğin **netfilter/NFQUEUE** altyapısı paketleri
-yakalar, işi `nfqws` yapar. Unwall bu motorun etrafına operatör presetleri,
-hostlist yönetimi, şifreli DNS ve teşhis araçları ekler.
+## Bu nedir
 
-Şu an hazır operatör presetleri **Türkiye** içindir (proje
-[zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey)
-uygulamasından doğdu); başka bir ülke eklemek
-[`lib/strategies.conf`](lib/strategies.conf) dosyasına tek satır eklemekten
-ibarettir — bkz. [CONTRIBUTING.md](CONTRIBUTING.md) (İngilizce).
+[@bol-van](https://github.com/bol-van)'ın **zapret** ve **zapret2** motorları
+kendi işlerinde çok iyi ve tamamen komut satırına dayalı: elle yazılan nftables
+kuralları, systemd birimi, tek tek denenecek onlarca parametre. Unwall bunları
+kurulup tıklanan ve sonra unutulabilen bir şeye çeviriyor — operatör presetleri,
+şifreli DNS, yerel ağ paylaşımı ve bir GTK4 arayüzü; üstelik o arayüz hiçbir
+zaman root çalışmadan.
 
-## İçindekiler
+Linux'ta motor yerli çalışıyor. WinDivert benzeri bir sürücü yerine çekirdeğin
+kendi **netfilter/NFQUEUE** altyapısı paketleri `nfqws`'e veriyor: ek sürücü yok,
+TUN aygıtı yok, sizinle ağ yığını arasında hiçbir şey yok.
 
-- [Özellikler](#özellikler)
-- [Kurulum](#kurulum)
-- [Kullanım](#kullanım)
-- [Şifreli DNS](#şifreli-dns-yogadns-karşılığı)
-- [Ağdaki cihazlarla paylaşım](#ağdaki-cihazlarla-paylaş-konsol-tv)
-- [Windows sürümünden farklar](#windows-sürümünden-farklar)
-- [Proje yapısı](#proje-yapısı)
-- [Sorun giderme](#sorun-giderme)
-- [Katkıda bulunma](#katkıda-bulunma)
-- [Lisans](#lisans)
-- [Teşekkürler](#teşekkürler)
+**v2.0'dan beri** Unwall yalnızca bir strateji uygulamıyor; o stratejinin işe
+yarayıp yaramadığını ölçüyor ve yaramıyorsa bunu söylüyor.
+
+## Nasıl çalışır
+
+Makineden çıkan her paket nftables kurallarından geçiyor. Motora yalnızca
+ayarlanan portlardaki — varsayılan olarak 80/443, ayrıca UDP üzerinden QUIC ve
+Discord sesli sohbet — bağlantıların ilk birkaç paketi veriliyor; geri kalan her
+şey doğrudan dışarı çıkıyor.
+
+```mermaid
+flowchart LR
+    U["Sizin trafiğiniz"] --> Q{"nftables<br/>postrouting"}
+    P["unwall-probe<br/><i>işaretli paketler</i>"] --> Q
+
+    Q -- "80/443,<br/>ilk paketler" --> E["nfqws2<br/><b>aktif strateji</b>"]
+    Q -- "geri kalan her şey" --> I(("İnternet"))
+    Q -- "işaretli" --> N["hiç atlatma yok<br/><i>(referans ölçüm)</i>"]
+    Q -- "işaretli, tune sırasında" --> T["2. kuyrukta nfqws2<br/><b>aday strateji</b>"]
+
+    E --> I
+    N --> I
+    T --> I
+
+    classDef accent fill:#E4572E,stroke:none,color:#ffffff
+    classDef ink fill:#14202B,stroke:none,color:#F2F0EA
+    class E accent
+    class N,T ink
+```
+
+O işaretli yol, v2.0'ın bütün hilesi. Ayrılmış, yetkisiz bir kullanıcının
+(`unwall-probe`) paketleri motorun kendi fwmark'ıyla damgalanıyor ve kuyruk
+kuralları zaten işaretli paketleri almıyor — böylece Unwall aynı siteyi
+atlatma **ile** ve atlatma **olmadan**, ya da ikinci bir kuyruktaki aday
+strateji üzerinden açabiliyor; tek bir kurala dokunmadan ve sizin yaptığınız işi
+kesmeden.
 
 ## Özellikler
 
-| | |
+|  |  |
 |---|---|
-| **Çoklu motor** | klasik `nfqws` (zapret) ve yeni LUA tabanlı `nfqws2` (zapret2) |
-| **Hazır stratejiler** | operatör presetleri (şimdilik `TR ·` Türk Telekom, Superonline, Kablonet, Vodafone, Turkcell/Telekom mobil) ve operatörden bağımsız genel profiller — blockcheck beklemeden denenebilir |
-| **Blockcheck** | operatörünüz için çalışan stratejiyi otomatik arar, sonucu doğrudan yapılandırmaya yazar |
-| **Hostlist / excludelist** | yalnızca engellenen alan adları motordan geçer, normal trafiğiniz etkilenmez; `com.tr` ve `gov.tr` varsayılan olarak hariç |
-| **systemd servisi** | açılışta otomatik başlatma, arayüz kapalıyken de çalışır |
-| **Ağ geçidi modu** | konsol, akıllı TV gibi cihazların trafiğini bu makine üzerinden geçirir (Windows'taki `go-pcap2socks` + Npcap'in karşılığı) |
-| **Şifreli DNS** | tek anahtarla DoH (`dnscrypt-proxy`, 443) veya DoT (`systemd-resolved`, 853) — YogaDNS önerisinin yerine geçer, geri alınabilir |
-| **Operatör otomatik tespiti** | ASN'nizi şifreli DNS üzerinden sorgulayıp uygun profili seçer; istenirse başka bir ağa geçtiğinizde yeniden algılar |
-| **Teşhis** | DNS müdahalesi kontrolü, çakışan araç/kuyruk tespiti |
-| **Türkçe ve İngilizce** | arayüz dili yerel ayardan seçilir, menüden değiştirilebilir (`UW_LANG=tr`/`en` ile de zorlanır) |
-| **Yetki ayrımı** | arayüz normal kullanıcı olarak çalışır, ayrıcalıklı işler polkit üzerinden tek bir yardımcı betiğe gider |
+| 🎛️ **Hazır stratejiler** | Operatör presetleri (`TR ·` Türk Telekom, Superonline, Kablonet, Vodafone, Turkcell / Telekom Mobil) ve operatörden bağımsız profiller — blockcheck çalıştırmadan kullanılabilir |
+| 🔍 **Blockcheck ve operatör tespiti** | ISS'nizde çalışan stratejiyi arar; ya da ASN'nizi şifreli DNS üzerinden sorup uygun profili seçer |
+| 📊 **Doğrulanmış listeler** | Bir alan adı, ancak siteye atlatmayla ve atlatmasız erişim arasındaki fark ölçüldükten sonra listede kalır |
+| 🎯 **Auto-tune** | Aday stratejileri gerçekten engelli sitelere karşı, ayrı bir kuyrukta puanlar; siz gezmeye devam edersiniz |
+| 🔔 **Nöbetçi** | Yarım saatte bir stratejinin hâlâ geçip geçmediğine bakar, gerekirse kendisi yenisini arar |
+| 📍 **Ağ başına profil** | Ev, mobil hotspot ve okul ağı; her biri kendinde çalışan stratejiyi saklar |
+| 🔐 **Şifreli DNS** | Tek anahtarla DoH (`dnscrypt-proxy`, 443) ya da DoT (`systemd-resolved`, 853); tamamen geri alınabilir |
+| 📺 **Ağ geçidi modu** | Konsol ya da akıllı TV'yi, DNS'i dahil, bu makine üzerinden geçirir |
+| 📡 **Hotspot modu** | Bu makineden Wi-Fi yayınlar; konsol hiçbir elle IP ayarı yapmadan bağlanır |
+| ⚙️ **systemd servisi** | Açılışta başlar, arayüz kapalıyken de çalışmaya devam eder |
+| 🌍 **Türkçe ve İngilizce** | Yerel ayarınızı izler, menüden değiştirilebilir (`UW_LANG=tr`/`en`) |
+| 🛡️ **Yetki ayrımı** | Arayüz normal kullanıcı olarak çalışır; yetki gerektiren her iş polkit üzerinden tek bir betiğe gider |
 
-## Kurulum
+## Hızlı başlangıç
 
 ```bash
-./install.sh
+git clone https://github.com/WinTone01/Unwall.git
+cd Unwall && ./install.sh
 ```
 
-Betik kendini bir kez yükseltir (`sudo`, yoksa `pkexec`), yani parola yalnızca
-bir defa sorulur. Bu tek komut her şeyi yapar:
+Kurulum parolanızı bir kez sorar, dağıtımınıza göre bağımlılıkları kurar ve iki
+motoru derler. **Hiçbir servisi başlatmaz, hiçbir sistem ayarına dokunmaz** —
+gerisi arayüzden yapılır.
 
-1. Dağıtımınızı tanır (`pacman` / `apt` / `dnf` / `zypper`) ve **gerekli +
-   isteğe bağlı tüm paketleri kurar** (`dnscrypt-proxy` dahil)
-2. Dosyaları, systemd birimini, polkit politikasını, ikonu ve uygulama menüsü
-   girdisini yerleştirir
-3. `nfqws` ve `nfqws2` motorlarını kaynaktan derler
+Ardından uygulama menüsünden (Ağ / İnternet kategorisi) ya da `unwall` komutuyla
+**Unwall**'ı açın ve:
 
-Kurulum **hiçbir servisi başlatmaz ve hiçbir sistem ayarını değiştirmez**.
-DNS, otomatik başlatma, strateji seçimi, ağ geçidi — hepsi arayüzden yapılır.
+1. **Ayarlar → Motor ve Strateji** altından operatörünüzü seçin ya da
+   **Analiz Et**'e basıp aratın.
+2. **BAŞLAT**'a basın.
+3. Önerilir — ISS'niz DNS'e müdahale ediyorsa **Şifreli DNS**'i, **Ayarlar →
+   Servis** altından da **açılışta başlat**'ı açın.
 
-Seçenekler: `--yes` (soru sorma), `--no-deps`, `--no-build`, `PREFIX=/usr`.
+Terminali tercih ederseniz:
 
-Kurulumdan sonra uygulama menüsünde **Unwall** (Ağ kategorisi) belirir;
-oradan ya da `unwall` komutuyla açabilirsiniz.
+```bash
+sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
+unwallctl status
+```
+
+## Kurulum
 
 ### Dağıtım paketleri
 
@@ -109,338 +137,141 @@ oradan ya da `unwall` komutuyla açabilirsiniz.
 | Flatpak (yalnızca arayüz) | bkz. [`flatpak/README.md`](flatpak/README.md) |
 | AppImage (yalnızca arayüz) | `./packaging/build-appimage.sh` |
 
-`.deb` ve `.rpm` derleme betikleri sırasıyla `dpkg-dev` ve `rpm-build`
-(`rpmbuild`) gerektirir; bu depodan gerçek bir paket üretirler, hazır bir
-şey indirmezler. İki paket de tıpkı `install.sh` gibi davranır: siz
-arayüzden ya da `unwallctl` ile yapmadıkça hiçbir servis başlamaz, hiçbir
-sistem ayarına dokunulmaz.
+Hazır `.deb`, `.rpm`, AppImage ve Flatpak dosyaları her
+[sürümün](https://github.com/WinTone01/Unwall/releases/latest) ekinde bulunur.
 
-Flatpak ve AppImage ayrı bir durum: ikisi de yalnızca GTK4 arayüzünü
-içerebilir, nftables/systemd/NFQUEUE kısmını değil; bu yüzden host'ta
-yukarıdaki paketlerden biri (ya da `install.sh`) zaten kurulu olmalı.
+Derleme betikleri bu depodan gerçek bir paket üretir — hiçbir hazır dosya
+indirmezler — ve `install.sh` ile birebir aynı davranırlar: siz yapmadan hiçbir
+servis başlatılmaz, hiçbir sistem ayarına dokunulmaz.
 
-- **Flatpak** sandbox'lıdır; host'un `unwallctl`/`pkexec`'ine
-  `flatpak-spawn --host` ile ulaşır. Nedenini ve nasıl çalıştığını
-  [`flatpak/README.md`](flatpak/README.md) dosyasında bulabilirsiniz.
-- **AppImage** sandbox'lı *değildir* — normal kullanıcı yetkinizle, diğer
-  ikili dosyalar gibi çalışır; `unwallctl`/`pkexec`'i doğrudan çağırır,
-  köprüye gerek yoktur. `appimagetool` gerektirir
-  (`PATH`'inizde değilse `APPIMAGETOOL=/araç/yolu ./packaging/build-appimage.sh`);
-  ortaya çıkan `Unwall-<sürüm>-x86_64.AppImage`, Flatpak gibi hâlâ
-  çalıştığı makinede native motoru bekleyen, taşınabilir tek dosyalık bir
-  arayüzdür.
+Flatpak ve AppImage ayrı bir durum. İkisi de yalnızca GTK4 arayüzünü
+içerebiliyor; nftables/systemd/NFQUEUE tarafını değil. Bu yüzden host'ta yine
+yukarıdaki paketlerden biri (ya da `install.sh`) kurulu olmalı. Flatpak
+sandbox'lıdır ve host'taki `unwallctl`/`pkexec`'e `flatpak-spawn --host` ile
+ulaşır; AppImage sandbox'lı değildir, onları doğrudan çağırır.
 
 <details>
-<summary><b>Yükseltme / kaldırma</b></summary>
+<summary><b>Kurulum seçenekleri ve bağımlılıkların elle kurulumu</b></summary>
 <br>
 
-**`zapret-turkey`'den yükseltme** (projenin eski adı): `./install.sh` yeterli.
-Eski servisi kapatır, `/etc/zapret-turkey` ve `/opt/zapret-turkey` dizinlerini
-yeni yollara taşır (motorlar yeniden derlenmez), şifreli DNS ayarınızı korur,
-eski ikilileri, birimi, polkit politikasını ve menü girdisini siler.
-
-Her şeyi kaldırmak için: `./uninstall.sh` (parolayı o da yalnızca bir kez
-sorar). Servisi durdurup devre dışı bırakır, nftables kurallarını siler,
-şifreli DNS yapılandırmasını geri alır (değiştirdiği `dnscrypt-proxy.toml`
-varsa yedekten geri yükler), program dosyalarını, ayarları ve listeleri,
-derlenmiş motorları ve kaynak ağacını, günlükleri siler; sonunda geriye iz
-kalmadığını doğrular. `--yes` onay sormaz, `--keep-config` `/etc/unwall`
-dizinini korur, `--purge-deps` `dnscrypt-proxy` paketini de kaldırır. Diğer
-bağımlılıklar (nftables, gtk4, luajit …) başka yazılımlar kullanabileceği
-için sistemde bırakılır.
-
-</details>
-
-<details>
-<summary><b>Bağımlılıkları elle kurmak isterseniz</b></summary>
-<br>
+`./install.sh` şu seçenekleri alır: `--yes` (soru sormaz), `--no-deps`,
+`--no-build`, `PREFIX=/usr`. Kendini bir kez yükseltir; `sudo` yoksa `pkexec`
+kullanır.
 
 ```bash
+# Arch
 sudo pacman -S --needed nftables python-gobject libadwaita gtk4 polkit bind gcc make pkgconf git curl luajit libnetfilter_queue libnfnetlink libmnl zlib dnscrypt-proxy
-```
 
-```bash
+# Debian / Ubuntu
 sudo apt install nftables python3-gi gir1.2-adw-1 gir1.2-gtk-4.0 policykit-1 dnsutils build-essential pkg-config git curl libluajit-5.1-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev zlib1g-dev dnscrypt-proxy
-```
 
-```bash
+# Fedora / openSUSE
 sudo dnf install nftables python3-gobject libadwaita gtk4 polkit bind-utils gcc make pkgconf git curl luajit-devel libnetfilter_queue-devel libnfnetlink-devel libmnl-devel zlib-devel dnscrypt-proxy
 ```
 
-`build` komutu `bol-van/zapret` ve `bol-van/zapret2` depolarını
-`/opt/unwall/src` altına klonlayıp `nfqws` / `nfqws2` ikililerini derler;
-sonradan `sudo unwallctl build` ile motorları güncelleyebilirsiniz.
+`sudo unwallctl build`, `bol-van/zapret` ve `bol-van/zapret2`'yi
+`/opt/unwall/src` altına klonlayıp `nfqws` / `nfqws2` ikililerini derler.
+Motorları güncellemek için sonradan tekrar çalıştırın.
 
 </details>
 
-## Kullanım
-
-Grafik arayüzden motoru, stratejiyi ve hostlist modunu seçip **ZAPRET'İ BAŞLAT**
-demeniz yeterli. Seçimleriniz siz düğmeye basana kadar uygulanmaz; o ana kadar
-durum satırında `uygulanmadı → ...` şeklinde görünür ve düğme
-**AYARLARI UYGULA** olur. "Açılışta otomatik başlat" anahtarı systemd birimini
-etkinleştirir; arayüz kapalıyken de çalışmaya devam eder.
-
-Arayüz normal kullanıcı olarak çalışır; yalnızca yetki gerektiren işlemler
-(başlatma, servis, DNS, ağ kuralları) polkit üzerinden parola sorar.
-
-Terminalden:
+<details>
+<summary><b>Güncelleme ve kaldırma</b></summary>
+<br>
 
 ```bash
-sudo unwallctl start STRATEGY=superonline ENGINE=zapret2
+sudo unwallctl self-update        # en son sürümü indirip kur
 ```
 
-| Komut | İş |
-|---|---|
-| `unwallctl status` | durum (key=value) |
-| `unwallctl strategies [motor]` | hazır strateji listesi |
-| `unwallctl config get\|set` | ayarları oku / yaz |
-| `sudo unwallctl start\|stop\|restart` | motoru çalıştır / durdur |
-| `sudo unwallctl enable\|disable` | açılışta otomatik başlatma |
-| `sudo unwallctl blockcheck [motor]` | ISS analizi |
-| `unwallctl dnscheck [domain]` | DNS müdahalesi kontrolü |
-| `unwallctl detect-isp` | operatörü ASN'den algıla, profil öner |
-| `unwallctl hostlist show LİSTE` | listeyi yazdır (`manual`/`auto`/`exclude`) |
-| `sudo unwallctl hostlist add\|remove LİSTE ALAN` | alan adı ekle / sil |
-| `sudo unwallctl dns enable\|disable` | şifreli DNS (DoT/DoH) aç / kapat |
-| `unwallctl dns status\|test` | şifreli DNS durumu / sınaması |
-| `unwallctl doctor` | ortam / çakışma teşhisi |
-| `sudo unwallctl disable-conflicts` | çakışan DPI araçlarını kapat |
-| `unwallctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
-| `unwallctl conncheck [domainler]` | birkaç hedefe gerçek TLS el sıkışması dener |
-| `sudo unwallctl verify [--all]` | öğrenilen alan adlarını ölçüp doğrular (yanlış pozitifleri siler) |
-| `sudo unwallctl prune` | listelerdeki geçersiz (çözülmeyen) alan adlarını ayıklar |
-| `sudo unwallctl verify-timer on\|off` | düzenli doğrulamayı aç / kapat |
-| `sudo unwallctl tune [--apply]` | aday stratejileri gerçek engelli sitelere karşı ölçer |
-| `sudo unwallctl watchdog` | strateji hâlâ çalışıyor mu, ölçer |
-| `unwallctl profile show\|save\|apply` | ağ başına strateji profili |
-| `sudo unwallctl hotspot on\|off` | konsol/TV için Wi-Fi ağı yayınlar |
-| `unwallctl report` | tek komutta tüm durum (arayüzün Sağlık sayfası bunu okur) |
-| `unwallctl blockcheck-results [motor]` | son blockcheck'teki tüm çalışan stratejileri listeler |
-| `unwallctl update-check` | GitHub'da yeni sürüm var mı bak (key=value) |
-| `sudo unwallctl self-update [sürüm]` | bir sürümü indirip kur (varsayılan: en son) |
+Arayüz, günde bir kez arka planda GitHub'da yeni sürüm olup olmadığına bakar —
+kendiliğinden yaptığı tek ağ erişimi budur — ve bulursa kapatılabilir bir bant
+gösterir. Oradaki **Şimdi güncelle** düğmesi (ya da yukarıdaki `self-update`) o
+sürümün kaynak arşivini indirip üzerinde `install.sh --no-deps --no-build`
+çalıştırır: CLI, arayüz, systemd birimi, polkit politikası, ikon ve menü girdisi
+değişir; yapılandırmanız ve listeleriniz olduğu gibi kalır. Elle denetlemek için
+`unwallctl update-check`.
 
-**Ayar dosyası**: `/etc/unwall/unwall.conf`
-**Listeler**: `/etc/unwall/{hostlist,excludelist,autohostlist,autohostlist-pending}.txt`
+**`zapret-turkey`'den geçiş** (projenin eski adı): sadece `./install.sh`
+çalıştırın. Eski servisi kapatır, `/etc/zapret-turkey` ve `/opt/zapret-turkey`
+dizinlerini yeni yollara taşır (motorlar yeniden derlenmesin diye), şifreli DNS
+ayarınızı korur; eski ikilileri, birimi, polkit politikasını ve menü girdisini
+siler.
 
-### Otomatik öğrenme ve yanlış pozitifler
+**Kaldırmak için**: `./uninstall.sh` servisi durdurup devre dışı bırakır,
+nftables kurallarını siler, şifreli DNS yapılandırmasını geri alır (değiştirdiği
+`dnscrypt-proxy.toml` varsa geri yükler), program dosyalarını, ayarları,
+listeleri, derlenmiş motorları ve günlükleri siler — sonra geride bir şey
+kalmadığını doğrular. `--yes` onayı atlar, `--keep-config` `/etc/unwall`'ı
+korur, `--purge-deps` `dnscrypt-proxy` paketini de kaldırır. Diğer bağımlılıklara
+(nftables, gtk4, luajit …) dokunulmaz; başka yazılımlar da onlara ihtiyaç
+duyabilir.
 
-`HOSTLIST_MODE=auto` iken motor, engellendiğini düşündüğü alan adlarını
-kendisi öğrenir. Bu tespit tahminidir: bir bağlantının başarısız olması
-engellendiği anlamına gelmez. Anlık düşen bir site, kablosuz ağdaki bir
-sıçrama ya da cevap vermeyen bir telemetri ucu da aynı görünür. Sonuç,
-zamanla listenin gerçekte hiç engelli olmayan alan adlarıyla dolmasıdır -
-bir test makinesinde 497 girdinin 368'i (yani %74'ü) böyleydi: `ping.archlinux.org`,
-`connectivitycheck.gstatic.com`, `csi.gstatic.com`, `incoming.telemetry.mozilla.org`...
+</details>
 
-Bu sadece gürültü değil: engelli olmayan bir alan adına strateji uygulamak
-o siteyi bozabilir.
+## Tahmin etmek yerine ölçmek
 
-v1.5'ten beri öğrenilen alan adları doğrudan kalıcı listeye yazılmıyor:
+`HOSTLIST_MODE=auto` iken motor, engellenen alan adlarını kendisi öğrenir. Bu
+tespit bir tahmindir: başarısız bir bağlantı, engellenmiş bir bağlantı demek
+değildir. Anlık düşen bir site, kablosuz ağdaki bir sıçrama ya da hiç cevap
+vermeyen bir telemetri ucu — hepsi aynı görünür. Bir test makinesinde
+**öğrenilen 497 girdinin 368'i (%74) hiç engelli değildi**:
+`ping.archlinux.org`, `connectivitycheck.gstatic.com`,
+`incoming.telemetry.mozilla.org` ve onlar gibi uzun bir kuyruk. Bu sadece
+gürültü de değil: engelli olmayan bir alan adına desync uygulamak o siteyi
+bozabilir.
 
-1. **Karantina.** Motor yeni öğrendiklerini `autohostlist-pending.txt`'ye
-   yazar. Strateji bu alan adlarına da uygulanır (yani hiçbir şey
-   yavaşlamaz), ama kalıcı `autohostlist.txt`'ye ancak doğrulandıktan sonra
-   geçerler.
-2. **Ölçüm.** `unwallctl verify` her alan adına iki bağlantı kurar: biri DPI
-   atlatma **uygulanmadan**, biri normal. Atlatmasız bağlantı, ayrılmış bir
-   sistem kullanıcısının (`unwall-probe`) trafiğini motorun kendi fwmark'ıyla
-   işaretleyen bir nftables kuralı sayesinde kuyruğa hiç girmez - yani
-   kuralları söküp takmadan, çalışan trafiğe dokunmadan ölçüm yapılır.
-3. **Karar.** Dört sonuçtan biri:
+Bu yüzden öğrenilen alan adları artık doğrudan kalıcı listeye girmiyor.
+
+1. **Karantina.** Yeni öğrenilenler `autohostlist-pending.txt`'ye yazılır.
+   Strateji bu alan adlarına da uygulanır, yani beklerken hiçbir şey yavaşlamaz.
+2. **Ölçüm.** `unwallctl verify` her alan adını iki kez açar — biri atlatmayla,
+   biri atlatmasız — yukarıdaki şemadaki işaretli yol üzerinden.
+3. **Karar.**
 
 | Karar | Anlamı | Yapılan |
 |---|---|---|
-| `false-positive` | atlatmasız da açılıyor | listeden silinir (karantinadan ikinci kez düşerse dışlama listesine yazılır) |
-| `blocked` | atlatmasız kapalı, atlatmayla açık | kalıcı listeye alınır |
-| `still-blocked` | iki türlü de kapalı, imza DPI müdahalesi gibi | listede kalır — **engel gerçek ama strateji yetmiyor** |
-| `not-dpi` | host canlı ama sorun sertifika/TLS yapılandırması | listeden silinir (desync bunu çözmez) |
-| `invalid` | alan adı hiç çözülmüyor | listeden silinir |
-| `unreachable` | ölü/erişilemez host (443'e TCP bile kurulamıyor) | listeden silinir |
-| `skipped-ip` | ham IP girdisi | dokunulmaz |
-
-Ayrım `curl`'ün çıkış koduna dayanıyor ve bu ayrımı doğru yapmak sanıldığından
-önemli: bir WebSocket ucu (`ws-eu.pusher.com`) **HTTP 426 döndürüp** akışı
-kapatır, sertifikası eşleşmeyen canlı bir host TLS hatası verir - ikisi de
-"engellendi" değildir. Ölçüm, sunucudan bir HTTP kodu geldiği anda başarılı
-sayılır; TLS kesmesi (`35/52/56`) DPI imzası, sertifika hataları
-(`51/58/59/60/...`) ise canlı host sayılır. Zaman aşımında 443'e çıplak bir TCP
-bağlantısı denenir: kuruluyorsa host canlıdır ve kesme el sıkışmadadır.
-
-### Geçersiz alan adlarını ayıklamak
-
-Liste zamanla çöp biriktirir: süresi dolmuş adlar, CDN'lerin ürettiği geçici
-konak adları, yazım hataları. Bunları DPI ölçümü yapmadan, sadece "bu ad var
-mı?" diye sorarak temizler:
-
-```bash
-sudo unwallctl prune
-```
-
-Soru ISS'nin DNS'ine değil, 443/TLS üzerinden Cloudflare DoH'a sorulur - düz
-DNS'e sorsaydık, DNS zehirlemesi olan bir ağda **bütün liste** "yok" görünüp
-silinirdi. DoH'a ulaşılamazsa hiçbir şey silinmez. Yalnızca motorun kendi
-öğrendiği listelere dokunur; elle yazdığınız `hostlist.txt` ve
-`excludelist.txt` sizindir.
+| `false-positive` | Atlatmasız da açılıyor | Silinir (karantinadan ikinci kez düşerse dışlama listesine de yazılır) |
+| `blocked` | Atlatmasız kapalı, atlatmayla açık | Kalıcı listeye alınır |
+| `still-blocked` | İki türlü de kapalı, imza DPI müdahalesi gibi | Listede kalır — **engel gerçek ama strateji onu geçemiyor** |
+| `not-dpi` | Host canlı, sorun sertifika / TLS yapılandırması | Silinir (desync bunu çözmez) |
+| `invalid` | Alan adı hiç çözülmüyor | Silinir |
+| `unreachable` | Ölü host — 443'e çıplak TCP bile kurulamıyor | Silinir |
 
 ```bash
 sudo unwallctl verify          # karantinadakileri doğrula
 sudo unwallctl verify --all    # kalıcı listeyi de denetle
 sudo unwallctl verify-timer on # saatte bir kendiliğinden yapsın
+sudo unwallctl prune           # alan adı artık çözülmeyen girdileri ayıkla
 ```
 
-Listeler değiştiğinde motor onları kendiliğinden yeniden yükler; servisi
-yeniden başlatmaya gerek yoktur.
-
-> [!NOTE]
-> Ölçüm TCP/443 üzerinden yapılır. Yalnızca QUIC'i engellenen bir alan adı
-> burada "açılıyor" görünebilir, bu yüzden **kalıcı listeden düşen** girdiler
-> asla otomatik olarak dışlama listesine yazılmaz - sadece silinir, gerekirse
-> motor yeniden öğrenir. Bir alan adının listede kalmasını garantilemek
-> isterseniz `hostlist.txt`'ye yazın: `verify` oraya hiç dokunmaz.
-> Ham IP girdileri de ölçülmez (`https://<ip>` her koşulda sertifika hatası
-> verir), oldukları gibi bırakılırlar.
-
-
-**Günlükler**: `journalctl -u unwall -f` ve `/var/log/unwall/`
-
-Arayüz günde bir kez arka planda GitHub'da yeni sürüm olup olmadığına bakar
-(aksi halde hiç ağa çıkmaz) ve bulursa kapatılabilir bir bant içinde sürüm
-bağlantısını gösterir. Menüden (**Güncellemeleri denetle**) ya da terminalden
-elle tetiklenebilir:
-
-```bash
-unwallctl update-check
-```
-
-Banttaki **Şimdi güncelle** düğmesine basmak (ya da `sudo unwallctl
-self-update`'i elle çalıştırmak) o sürümün kaynak arşivini indirip
-`install.sh --no-deps --no-build`'ini çalıştırır: CLI, GUI, systemd birimi,
-polkit politikası, ikon ve menü girdisi yenilenir; paketlere ve derlenmiş
-motorlara dokunulmaz, işlem sırasında hiçbir şey başlatılmaz/durdurulmaz —
-`install.sh`'i elle çalıştırmakla aynı garantiler. Bu yalnızca `install.sh`
-ile kurduysanız işe yarar; bir dağıtım paketiyle (`.deb`/`.rpm`/AUR)
-kurduysanız güncellemeyi paket yöneticinizden yapın, çünkü `self-update`
-bir sonraki `apt`/`dnf`/`pacman` yükseltmesinde zaten üzerine yazılır.
-
-## Şifreli DNS (YogaDNS karşılığı)
-
-ISS'niz DNS'e müdahale ediyorsa zapret tek başına yetmez. Arayüzdeki **Şifreli
-DNS** anahtarı ya da `unwallctl dns` komutu bunu kurar; elle dosya
-düzenlemenize gerek yoktur.
-
-| Yöntem | Taşıma | Not |
-|---|---|---|
-| **DoH** — `dnscrypt-proxy` | 443/tcp | Normal HTTPS'ten ayırt edilemez, engellenmesi zor. `dnscrypt-proxy` paketi gerekir. |
-| **DoT** — `systemd-resolved` | 853/tcp | Ek paket gerektirmez, ama 853 ayrı bir port olduğu için bazı ISS'ler kapatabilir. |
-
-```bash
-sudo unwallctl dns enable cloudflare auto
-```
-
-`auto`, `dnscrypt-proxy` kuruluysa DoH'u, değilse DoT'u seçer. Sağlayıcı olarak
-`cloudflare`, `google` veya `quad9` verilebilir.
-
-```bash
-unwallctl dns test
-sudo unwallctl dns disable
-```
+Listeler değiştiği anda motor tarafından yeniden yüklenir; bunların hiçbiri bir
+şeyi yeniden başlatmaz.
 
 <details>
-<summary>Perde arkasında ne oluyor</summary>
+<summary><b>Engel, başka arızalardan nasıl ayırt ediliyor</b></summary>
 <br>
 
-- **DoT**: `/etc/systemd/resolved.conf.d/90-unwall.conf` içine
-  `DNSOverTLS=yes` + sağlayıcı sunucuları yazılır. `Domains=~.` sayesinde
-  DHCP ile gelen ISS DNS'i yerine bunlar kullanılır; kendi arama alanı olan
-  bağlantılar (VPN, Tailscale) etkilenmez.
-- **DoH**: `dnscrypt-proxy` `127.0.0.1:5300`'de DoH istemcisi olarak çalışır,
-  `systemd-resolved` upstream olarak oraya bakar. Mevcut
-  `dnscrypt-proxy.toml` üzerine yazmadan önce `.unwall.bak` olarak
-  yedeklenir; `dns disable` yedeği geri yükler.
+Ayrım `curl`'ün çıkış koduna dayanıyor ve bunu doğru yapmak sanıldığından
+önemli. Bir WebSocket ucu **HTTP 426** döndürüp akışı kapatıyor (curl 92), adıyla
+eşleşmeyen sertifikası olan canlı bir host ise TLS'te düşüyor — ikisi de engel
+değil, ama ikisi de engel sayılıyordu.
 
-`dns disable` her iki değişikliği de geri alır — kaldırma betiği de bunu çağırır.
+- Sunucudan **herhangi bir** HTTP kodu geldiği anda ölçüm başarılıdır; curl'ün
+  çıkış kodunun ne olduğu önemli değil.
+- TLS kesmeleri (`35/52/56`) müdahale imzası; sertifika hataları
+  (`51/58/59/60/…`) ise TLS yapılandırması bozuk ama canlı bir host demek.
+- Zaman aşımında karar çıplak bir TCP bağlantısıyla veriliyor: 443 açılıyorsa
+  host canlıdır ve kesme el sıkışmada oluyordur.
+
+`prune`, bir adın hâlâ var olup olmadığını 443/TLS üzerinden Cloudflare DoH'a
+sorar — düz metin sorsaydı, DNS zehirlemesi olan bir ağda **bütün** alan adları
+yok görünür ve liste silinirdi. DoH'a ulaşılamazsa hiçbir şey silinmez, ham IP
+girdileri atlanır, `hostlist.txt` ve `excludelist.txt` ise hiç ellenmez: onlar
+sizin.
 
 </details>
 
-## Ağdaki Cihazlarla Paylaş (konsol, TV)
-
-Arayüzdeki **Ağ geçidi modu** anahtarını açın. Bu makine yerel ağ için NAT yapan
-bir yönlendiriciye dönüşür (`ip_forward` + `nft masquerade`) ve yönlendirilen
-trafik de zapret'ten geçer. Windows'taki Npcap + `go-pcap2socks` katmanına gerek
-yoktur; yönlendirme çekirdek tarafından yapılır.
-
-DNS de Windows sürümündeki `go-pcap2socks`'un yaptığı işi görür, sadece gömülü
-bir proxy yerine bir nftables kuralıyla: LAN'dan gelen her DNS sorgusu (TCP ve
-UDP, port 53) bu makinedeki çözümleyiciye şeffafça yönlendirilir (`dnat`).
-**Cihazın DNS alanına ne yazdığınızın önemi yoktur** — cihazın paketleri o
-adrese hiç gerçekten çıkmaz, çıkmadan önce bu makineye yeniden yazılır.
-
-Bu, Türk Telekom / TT Mobil gibi **port 53'e giden her paketi ele geçirip kendi
-yanıtını döndüren** ağlarda tek çözümdür: konsolun kendi DNS'i ISS'ye çıktığı
-sürece engelli sitelerin gerçek IP'sini asla öğrenemez, DPI atlatma çalışsa bile
-bağlantı yanlış adrese kurulur. Superonline/Turkcell gibi 53'e dokunmayan
-ağlarda ise cihaz kendi DNS'iyle de idare edebilir.
-
-Yönlendirmenin hedefi otomatik seçilir:
-
-- **Şifreli DNS (DoH/dnscrypt-proxy) açıksa** sorgular doğrudan
-  `127.0.0.1:5300`'e, yani şifreli kanala gider. Konsol/TV için önerilen kurulum
-  budur: `unwallctl dns enable cloudflare dnscrypt` (ya da arayüzden Şifreli DNS
-  + Yöntem: DoH).
-- **Şifreli DNS kapalıysa ya da DoT (systemd-resolved) kullanılıyorsa**
-  `systemd-resolved`'in LAN adresinde ikinci bir dinleyicisi açılır
-  (`DNSStubListenerExtra`, `/etc/systemd/resolved.conf.d/91-unwall-gateway.conf`)
-  ve sorgular oraya yönlendirilir. resolved'in asıl `127.0.0.53` stub'ı yalnızca
-  yerel adreslerden gelen sorgulara yanıt verdiği için LAN'dan gelen paketleri
-  sessizce atar; bu yüzden doğrudan oraya yönlendirmek işe yaramaz. Ağ geçidi
-  modu kapatılınca bu dinleyici geri alınır.
-- **Kullanılabilir bir hedef yoksa** yönlendirme kuralı hiç yazılmaz: DNS'i kara
-  deliğe göndermektense cihazın kendi ayarıyla çalışması yeğdir. Bu durumda
-  arayüzün Durum sayfasındaki "Ağ geçidi modu" satırında *cihaz DNS'i
-  yönlendirilmiyor* yazar, `unwallctl doctor` da "ağ geçidi DNS" satırında SORUN
-  gösterir.
-
-Cihazın (PlayStation, Xbox, Switch, TV) manuel ağ ayarlarına:
-
-| Alan | Değer |
-|---|---|
-| IP adresi | ağınızda boş bir adres, örn. `192.168.1.50` |
-| Alt ağ maskesi | ağınızla aynı, genelde `255.255.255.0` |
-| Ağ geçidi | bu bilgisayarın LAN IP adresi (arayüzde "LAN adresi" satırında yazar) |
-| DNS | geçerli görünen herhangi bir değer, örn. `1.1.1.1` — çoğu cihaz DNS alanı boşken devam etmiyor, ama gerçek değer yukarıdaki yönlendirmeyle zaten geçersiz kılınıyor |
-
-> [!NOTE]
-> `firewalld`/`ufw` gibi bir güvenlik duvarı `forward` zincirinde varsayılan
-> olarak paket düşürüyorsa (birçok dağıtımda ufw'nin `DEFAULT_FORWARD_POLICY`
-> ayarı kutudan çıktığı gibi `DROP`'tur) ağ geçidi modundaki cihazlar
-> "bağlandım ama internet yok" ile karşılaşır. v1.3.14'ten beri
-> `unwallctl` bunu kendisi tespit edip ağ geçidi modu her uygulandığında
-> hedefli bir `ufw route allow` kuralı (firewalld'de `firewall-cmd
-> --add-forward`) otomatik ekliyor — elle güvenlik duvarı ayarı gerekmez.
-> Ne tespit edildiğini `unwallctl doctor` ya da arayüzün Teşhis
-> menüsünden "ağ geçidi yönlendirme" satırında görebilirsiniz.
-
-> [!NOTE]
-> DNS yönlendirmesi için ufw'de ikinci bir kural daha gerekiyor:
-> yönlendirilen paketin hedefi artık bu makinenin kendisi olduğu için paket
-> `forward` zincirinden değil `INPUT`'tan geçer ve `ufw route allow`
-> kuralının kapsamına girmez - ufw'nin varsayılan gelen politikası DROP
-> olduğundan sorgu `[UFW BLOCK] ... DST=127.0.0.1 DPT=5300` ile düşer.
-> v1.4.2'den beri `unwallctl` yönlendirme hedefine gelen bağlantı için de
-> nokta atışı bir izin ekliyor (`# unwall dns redirect` yorumuyla
-> görünür) ve ağ geçidi kapatılınca geri alıyor. `doctor`, kural yerinde
-> ama izin yoksa "ağ geçidi DNS" satırında uyarır.
-
-## Kendi kendini ayarlama (v2.0)
-
-Bir stratejinin çalışıp çalışmadığı tahmin edilecek bir şey değil, ölçülecek
-bir şey. v2.0'daki dört özellik de aynı ölçüm altyapısını kullanıyor:
-ayrılmış `unwall-probe` kullanıcısının trafiği motorun fwmark'ıyla
-işaretleniyor, kuyruk kuralları işaretli paketleri almıyor, böylece "atlatma
-olmadan" bağlantı kurallara hiç dokunmadan denenebiliyor.
-
-### En iyi stratejiyi bulmak
+### Daha iyi bir strateji bulmak
 
 ```bash
 sudo unwallctl tune            # ölç ve öner
@@ -448,87 +279,258 @@ sudo unwallctl tune --apply    # ölç ve en iyisini uygula
 sudo unwallctl tune --deep     # daha geniş parametre araması
 ```
 
-`blockcheck`ten farkı, **çalışan bağlantınıza hiç dokunmaması**: aday
-strateji ayrı bir kuyrukta (`QNUM+1`) ikinci bir motor örneğinde çalışır ve
-oraya yalnızca ölçüm kullanıcısının trafiği yönlendirilir. Siz bu sırada
-normal stratejiyle gezmeye devam edersiniz.
+`blockcheck`ten farkı, bağlantınızı hiç rahatsız etmemesi: aday, ayrı bir
+kuyrukta (`QNUM+1`) ikinci bir motor örneğinde çalışır ve oraya yalnızca ölçüm
+kullanıcısının trafiği gider.
 
-Test kümesi de tahmin değil: doğrulanmış listenizden örneklem alınır ve
-**o an gerçekten engelli olan** alan adları seçilir. Adaylar hazır
-profiller + bir parametre ızgarasıdır (sahte paketin TTL'i ve bölme
-yöntemi); argümanlarına göre tekilleştirilir. Tam skor yapan bir aday
-bulununca arama durur. Mevcut strateji zaten hepsini geçiyorsa hiç aday
-denenmez.
+Test kümesi de ölçülerek seçilir: doğrulanmış listenizden bir örneklem alınır ve
+**mevcut stratejinin geçemediği** alan adlarına indirgenir; çünkü zaten çalışan
+sitelere karşı puanlamak bütün adayları birbirinin aynı gösteriyor. Adaylar,
+hazır profiller ile bir parametre ızgarasıdır (sahte paketin TTL'i, bölme
+yöntemi) ve argümanlarına göre tekilleştirilir. Hepsini geçen bir aday bulununca
+arama durur; mevcut strateji zaten hepsini geçiyorsa hiç aday denenmez.
+Izgaradan çıkan bir kazanan `STRATEGY=analiz` + `CUSTOM_ARGS` olarak kaydedilir.
 
-Izgaradan çıkan bir aday kazanırsa `STRATEGY=analiz` + `CUSTOM_ARGS` olarak
-kaydedilir.
-
-### Ağ başına profil
-
-Ev, mobil hotspot ve okul ağı farklı DPI'lardan geçer. Bir ağda çalışan
-stratejiyi kaydedin; o ağa döndüğünüzde kendiliğinden geri yüklenir.
-
-```bash
-unwallctl profile show     # bu ağın parmak izi ve kayıtlı profili
-sudo unwallctl profile save
-unwallctl profile list
-```
-
-Parmak izi olarak önce Wi-Fi SSID'si, yoksa varsayılan ağ geçidinin MAC
-adresi, o da yoksa router IP'si kullanılır. Ağ değiştiğinde NetworkManager
-dispatcher kancası (`/etc/NetworkManager/dispatcher.d/90-unwall`)
-`profile apply --auto` çağırır; o ağ için kayıt yoksa hiçbir şey yapmaz.
+Hiçbir aday hedefleri geçemezse bunu açıkça söyler: engel muhtemelen IP
+düzeyinde ya da el sıkışma sonrasındadır, ki ClientHello'yu bölmek bunu çözmez.
 
 ### Nöbetçi
-
-Strateji bir sabah çalışmayı bırakabiliyor - ISS DPI'ını günceller ve bu
-kullanıcıya "internet bozuldu" diye görünür. Nöbetçi, engelli olduğu
-**ölçülmüş** birkaç alan adını aktif stratejiden geçirip hâlâ açılıyorlar mı
-diye bakar.
 
 ```bash
 sudo unwallctl watchdog            # şimdi ölç
 sudo unwallctl watchdog-timer on   # yarım saatte bir ölç
 ```
 
-Yarısından azı açılıyorsa bu ölçüm kötüdür - ama "bozuk" kararı **üst üste
+Bir strateji, ISS DPI'ını güncellediğinde bir sabah çalışmayı bırakabilir ve bu
+size "internet bozuldu" diye ulaşır. Nöbetçi, engelli olduğu *ölçülmüş* birkaç
+alan adını açıp stratejinin hâlâ geçip geçmediğine bakar.
+
+Yarısından azının açılması o ölçümü kötü yapar — ama `degraded` kararı **üst üste
 iki kötü ölçüm** ister. Örneklem beş alan adı ve içlerinden biri o an kendi
-arızasını yaşıyor olabilir: ölçüldü, aynı dakikalarda arka arkaya yapılan iki
-denetim 5/5 ve 2/5 verebiliyor. Tek bir şanssız denetimin stratejiyi
-değiştirmesi (`WATCHDOG_ACTION=tune`) iyileştirme değil, gürültü olurdu.
-`WATCHDOG_ACTION=tune`
-ise auto-tune çalıştırılıp en iyi aday uygulanır; varsayılan `notify`, yani
-yalnızca haber verilir (arayüzün Sağlık sayfası ve `journalctl -u
-unwall-watchdog`).
+arızasını yaşıyor olabilir: ölçüldü, dakikalar arayla yapılan iki denetim 5/5 ve
+2/5 verdi. Tek bir şanssız denetimin stratejiyi değiştirmesi
+(`WATCHDOG_ACTION=tune`) iyileştirme değil, gürültü olurdu.
 
-### Hotspot (AP modu)
-
-Kablosuz kartınız AP modunu destekliyorsa, konsolda elle statik IP/ağ geçidi
-girmeye hiç gerek yok: PC kendi Wi-Fi ağını yayınlar, cihaz ona bağlanır.
+### Ağ başına profil
 
 ```bash
-sudo unwallctl hotspot on            # SSID: Unwall, parola üretilir ve yazdırılır
-sudo unwallctl hotspot on EvAgi parolaniz
-sudo unwallctl hotspot status
+unwallctl profile show     # bu ağın parmak izi ve kayıtlı profili
+sudo unwallctl profile save
 ```
 
-DHCP ve DNS'i NetworkManager'ın "shared" modu (dnsmasq) hallediyor; Unwall
-yalnızca ağ geçidi kurallarını açıyor. Kartınız aynı anda hem bağlanıp hem
-yayın yapamıyorsa ve internete de aynı karttan çıkıyorsanız bağlantı
-kopabilir - komut bunu önceden uyarır.
+Ev, mobil hotspot ve okul ağı farklı DPI'lardan geçer. Motor, strateji ve
+hostlist modu ağ başına hatırlanır — anahtar olarak önce Wi-Fi SSID'si, yoksa
+varsayılan ağ geçidinin MAC adresi, o da yoksa router IP'si kullanılır — ve ağ
+değiştiğinde bir NetworkManager kancası
+(`/etc/NetworkManager/dispatcher.d/90-unwall`) profili geri yükler. Eskimiş bir
+ARP girdisi, farklı bir anahtara düşmek yerine tek bir ping ile tazelenir: şekil
+değiştiren bir parmak izi, sessizce hiç eşleşmeyen bir özellik demektir.
 
-### Sağlık sayfası
+## Şifreli DNS
 
-Arayüzdeki yeni **Sağlık** sekmesi bunların hepsini tek yerde gösterir: son
-nöbetçi denetimi, "Ölç ve uygula" düğmesi, bu ağın profili, hotspot anahtarı
-ve liste sayıları. Aynı veri terminalden `unwallctl report` ile alınabilir.
+ISS'niz DNS'e müdahale ediyorsa zapret tek başına yetmez. Arayüzdeki **Şifreli
+DNS** anahtarı ya da `unwallctl dns` komutu bunu sizin için kurar — elle dosya
+düzenlemek yok.
+
+| Yöntem | Taşıma | Notlar |
+|---|---|---|
+| **DoH** — `dnscrypt-proxy` | 443/tcp | Normal HTTPS'ten ayırt edilemez, engellemesi zor. `dnscrypt-proxy` paketi gerekir. |
+| **DoT** — `systemd-resolved` | 853/tcp | Ek paket gerekmez, ama 853 ayrı bir porttur ve bazı ISS'ler kapatır. |
+
+```bash
+sudo unwallctl dns enable cloudflare auto   # auto = mümkünse DoH, değilse DoT
+unwallctl dns test
+sudo unwallctl dns disable
+```
+
+Sağlayıcılar: `cloudflare`, `google`, `quad9`.
+
+<details>
+<summary><b>Arka planda ne oluyor</b></summary>
+<br>
+
+- **DoT**: `/etc/systemd/resolved.conf.d/90-unwall.conf` altında `DNSOverTLS=yes`
+  ve sağlayıcının sunucularını içeren bir drop-in. `Domains=~.` bunların
+  DHCP'den gelen ISS sunucularına üstün gelmesini sağlar; kendi arama alan adı
+  olan bağlantılar (VPN, Tailscale) etkilenmez.
+- **DoH**: `dnscrypt-proxy`, `127.0.0.1:5300` üzerinde bir DoH istemcisi olarak
+  çalışır ve `systemd-resolved` onu upstream olarak kullanır. Mevcut bir
+  `dnscrypt-proxy.toml` değiştirilmeden önce `.unwall.bak` olarak yedeklenir;
+  `dns disable` onu geri yükler.
+
+`dns disable` iki değişikliği de geri alır — kaldırma betiği de onu çağırır.
+
+</details>
+
+## Konsol ya da TV ile paylaşmak
+
+Başka bir cihazı Unwall'ın arkasına almanın iki yolu var.
+
+### Hotspot — cihazda ayarlanacak hiçbir şey yok
+
+```bash
+sudo unwallctl hotspot on            # SSID "Unwall", parola üretilip yazdırılır
+sudo unwallctl hotspot on EvAgi parolaniz
+```
+
+Kablosuz kartınız AP modunu destekliyorsa bu makine, NetworkManager'ın "shared"
+modu üzerinden kendi Wi-Fi ağını yayınlar. Konsol ona sıradan bir ağa bağlanır
+gibi bağlanır — IP yok, ağ geçidi alanı yok, DNS alanı yok — ve ağ geçidi
+kuralları da onunla birlikte açılır. Kartınız aynı anda hem istemci hem erişim
+noktası olamıyorsa ve internete de aynı karttan çıkıyorsanız bağlantı kopabilir;
+komut bunu önceden uyarır.
+
+### Ağ geçidi modu — cihazda elle ayar
+
+Arayüzdeki **Ağ geçidi modu** anahtarını açın. Bu makine yerel ağ için NAT yapan
+bir yönlendiriciye dönüşür (`ip_forward` + `nft masquerade`) ve yönlendirilen
+trafik de zapret'ten geçer.
+
+| Alan | Değer |
+|---|---|
+| IP adresi | ağınızda boş bir adres, örn. `192.168.1.50` |
+| Alt ağ maskesi | ağınızla aynı, genelde `255.255.255.0` |
+| Ağ geçidi | bu bilgisayarın LAN IP adresi (arayüzdeki "LAN adresi" satırı) |
+| DNS | geçerli görünen herhangi bir değer, örn. `1.1.1.1` — gerçek değer geçersiz kılınır |
+
+**Asıl önemli kısım DNS.** Bir nftables kuralı, LAN'dan gelen bütün DNS
+sorgularını (TCP ve UDP, port 53) şeffafça bu makinedeki çözümleyiciye
+yönlendirir; yani cihazın DNS ayarına ne yazdığınızın önemi yoktur. Port 53'e
+giden *her* paketi ele geçirip kendi yanıtını döndüren ağlarda — Türk Telekom ve
+TT Mobil bunu yapıyor — tek çözüm budur: konsolun kendi sorgusu ISS'ye ulaştığı
+sürece engelli sitenin gerçek IP'sini asla öğrenemez ve DPI atlatma çalışsa bile
+bağlantı yanlış adrese kurulur.
+
+Yönlendirmenin hedefi otomatik seçilir: DoH açıksa dnscrypt-proxy'nin
+`127.0.0.1:5300` adresi, değilse LAN adresinde açılan ayrı bir
+`DNSStubListenerExtra` dinleyicisi. İkisi de kurulamıyorsa hiç yönlendirme
+kuralı yazılmaz — cihazın kendi DNS'ini kullanması, kara deliğe düşmesinden
+iyidir.
+
+<details>
+<summary><b>Güvenlik duvarı notları</b></summary>
+<br>
+
+Ağ geçidi modu iki güvenlik duvarı izni ister ve Unwall ikisini de kendisi
+ekler:
+
+- **Yönlendirme.** `ufw` ya da `firewalld`, `forward` zincirinde varsayılan
+  olarak paket düşürüyorsa (birçok dağıtımda ufw'nin `DEFAULT_FORWARD_POLICY`
+  ayarı kutudan çıktığı gibi `DROP`'tur) ağ geçidi modundaki cihazlar
+  "bağlandım ama internet yok" yaşar. Ağ geçidi modu her uygulandığında hedefli
+  bir `ufw route allow` kuralı (firewalld'de `firewall-cmd --add-forward`)
+  eklenir.
+- **Yönlendirilen sorgunun kendisi.** Yönlendirildikten sonra sorgunun hedefi bu
+  makine olur ve paket `forward` değil `INPUT` zincirinden geçer; yani yukarıdaki
+  kural onu kapsamaz. ufw'nin varsayılan gelen politikasıyla
+  `[UFW BLOCK] … DST=127.0.0.1 DPT=5300` diye düşer. Yönlendirme hedefi için
+  nokta atışı bir izin, kurallarla birlikte eklenip onlarla birlikte kaldırılır.
+
+`unwallctl doctor` ikisini de "ağ geçidi yönlendirme" ve "ağ geçidi DNS"
+satırlarında gösterir.
 
 > [!NOTE]
-> Ağ geçidi modunda cihazın IPv6'sı doğrudan router'dan gelir ve bu trafik
-> bu makineden geçmez - yani Unwall'ı atlar. IPv6 üzerinden erişilebilen bir
-> site engelliyse cihazda IPv6'yı kapatmak gerekir. Kendi makinenizin IPv6
-> trafiği için `ENABLE_IPV6=1` yeterlidir.
+> Ağ geçidi modunda cihazın IPv6'sı doğrudan router'dan gelir ve bu makineden
+> hiç geçmez, yani Unwall'ı atlar. IPv6 üzerinden erişilebilen bir site
+> engelliyse cihazda IPv6'yı kapatmak gerekir. Bu makinenin kendi IPv6 trafiği
+> için `ENABLE_IPV6=1` yeterlidir.
 
+</details>
+
+## Komut satırı
+
+```bash
+unwallctl report      # tek komutta tüm durum — Sağlık sayfası bunu okur
+unwallctl doctor      # ortam ve çakışma teşhisi
+```
+
+<details>
+<summary><b>Bütün komutlar</b></summary>
+<br>
+
+| Komut | Ne yapar |
+|---|---|
+| `unwallctl status` | durum bilgisi (key=value) |
+| `unwallctl report` | tek komutta tüm durum |
+| `unwallctl strategies [motor]` | hazır strateji listesi |
+| `unwallctl config get\|set` | ayarları oku / değiştir |
+| `sudo unwallctl start\|stop\|restart` | motoru çalıştır / durdur |
+| `sudo unwallctl enable\|disable` | açılışta başlat |
+| `sudo unwallctl build [motor]` | motorları derle / güncelle |
+| `sudo unwallctl blockcheck [motor]` | ISS analizi |
+| `unwallctl blockcheck-results [motor]` | son blockcheck'teki tüm çalışan stratejiler |
+| `unwallctl detect-isp` | operatörü ASN'den algıla, strateji öner |
+| `unwallctl dnscheck [domain]` | DNS müdahalesi kontrolü |
+| `unwallctl conncheck [domainler]` | birkaç hedefe gerçek TLS el sıkışması |
+| `unwallctl hostlist show LİSTE` | listeyi yazdır (`manual`/`auto`/`pending`/`exclude`) |
+| `sudo unwallctl hostlist add\|remove LİSTE ALAN` | alan adı ekle / sil |
+| `sudo unwallctl verify [--all]` | öğrenilen alan adlarını ölçüp doğrula |
+| `sudo unwallctl prune` | çözülmeyen alan adlarını listelerden ayıkla |
+| `sudo unwallctl verify-timer on\|off` | düzenli doğrulama |
+| `sudo unwallctl tune [--apply] [--deep]` | aday stratejileri ölç |
+| `sudo unwallctl watchdog` | strateji hâlâ çalışıyor mu |
+| `sudo unwallctl watchdog-timer on\|off` | düzenli sağlık denetimi |
+| `unwallctl profile show\|list\|save\|apply` | ağ başına strateji profili |
+| `sudo unwallctl hotspot status\|on\|off` | Wi-Fi ağı yayınla |
+| `sudo unwallctl dns enable\|disable` | şifreli DNS (DoT/DoH) |
+| `unwallctl dns status\|test` | şifreli DNS durumu / sınaması |
+| `unwallctl gateway-info` | ağ geçidi modu bilgisi |
+| `sudo unwallctl disable-conflicts` | çakışan DPI araçlarını kapat |
+| `unwallctl print-cmd`, `print-nft` | üretilen komutu ve kuralları göster |
+| `unwallctl update-check` | GitHub'da yeni sürüm var mı bak |
+| `sudo unwallctl self-update [sürüm]` | bir sürümü indirip kur |
+
+</details>
+
+**Ayar dosyası**: `/etc/unwall/unwall.conf` ·
+**Listeler**: `/etc/unwall/{hostlist,excludelist,autohostlist,autohostlist-pending}.txt` ·
+**Günlükler**: `journalctl -u unwall -f` ve `/var/log/unwall/`
+
+## Sorun giderme
+
+```bash
+unwallctl doctor
+UW_DEBUG=1 unwall     # arayüzü terminalden, tam günlükle çalıştır
+```
+
+Uygulama tek örneklidir: pencere zaten açıkken terminalden başlatmak yalnızca o
+pencereyi öne getirir. Hata ayıklarken ayrı bir örnek için
+`UW_NO_UNIQUE=1 UW_DEBUG=1 unwall` kullanın.
+
+<details open>
+<summary><b>Sık karşılaşılanlar</b></summary>
+<br>
+
+- **Motor başlamıyor** — `journalctl -u unwall -n 50`.
+- **Strateji seçimim geri dönüyor** — seçim, **AYARLARI UYGULA** / **BAŞLAT**'a
+  basana kadar bekler; durum satırında `uygulanmadı → …` diye görünür.
+- **Hiçbir şey değişmedi** — kuralların yüklü olduğunu
+  `sudo nft list table ip unwall` ile kontrol edin; `manual` hostlist modundaysanız
+  alan adının listede olduğundan emin olun.
+- **QUIC / HTTP3 siteleri bozuldu** — yapılandırmada `PORTS_UDP=` (boş) yapın.
+- **Otomatik hostlist modu alan adı eklemiyor** — motor bir alan adını, ancak
+  *henüz desync uygulanmayan* bir bağlantıda tanınabilir bir "engellenmiş
+  bağlantı" örüntüsü gördükten sonra ekler. Stratejiniz zaten temiz geçiyorsa
+  böyle bir örüntü hiç oluşmaz ve alan adı haklı olarak eklenmez. Eşik
+  `AUTO_FAIL_THRESHOLD` (varsayılan 2). Engelli bir siteyi açarken
+  `sudo tail -f /var/log/unwall/hostlist-auto.log` ile motorun ne gördüğüne
+  bakabilirsiniz.
+- **Engelli olmayan bir alan adı eklendi** — `verify` tam da bunun için: bir kez
+  `sudo unwallctl verify --all`, sonra `sudo unwallctl verify-timer on`.
+- **Başka bir DPI aracı çalışıyor** — `byedpi`, `tpws`, upstream
+  `zapret.service` ya da TUN aygıtı oluşturan bir VPN kuyruk için çekişir.
+- **Upstream zapret zaten kurulu** (`/opt/zapret`, `zapret.service`) — ikisini
+  birden çalıştırmayın: `sudo systemctl disable --now zapret`. Unwall
+  çakışmayı azaltmak için varsayılan olarak `210` kuyruğunu kullanır (upstream
+  `200`), ve yerel derlenmiş motor yoksa mevcut `/opt/zapret` ikililerini
+  kullanabilir.
+
+</details>
+
+Hâlâ takıldıysanız
+[hata bildirim şablonuyla](https://github.com/WinTone01/Unwall/issues/new/choose)
+bir issue açın — şablondaki ortam tablosunu (sürüm, kurulum yöntemi, dağıtım,
+motor, strateji, hostlist modu) baştan doldurmak en çok zaman kazandıran şey.
 
 ## Windows sürümünden farklar
 
@@ -536,129 +538,62 @@ ve liste sayıları. Aynı veri terminalden `unwallctl report` ile alınabilir.
 |---|---|
 | `winws.exe` / `winws2.exe` | `nfqws` / `nfqws2` |
 | WinDivert sürücüsü | netfilter NFQUEUE (`nfnetlink_queue`) |
-| `--wf-tcp` / `--wf-udp` / `--wf-l3` | nftables kuralları (`queue num ... bypass`) |
+| `--wf-tcp` / `--wf-udp` / `--wf-l3` | nftables kuralları (`queue num … bypass`) |
 | `sc create ZapretService` | `unwall.service` (systemd) |
-| UAC / `#RequireAdmin` | polkit + `pkexec` (yalnızca yardımcı betik yükselir) |
+| UAC / `#RequireAdmin` | polkit + `pkexec` (yalnızca yardımcı betik yükseltilir) |
 | Npcap + `go-pcap2socks` | `ip_forward` + `nft masquerade` |
-| YogaDNS (elle kurulur) | `dns enable` ile tümleşik DoH/DoT (`dnscrypt-proxy` / `systemd-resolved`) |
+| YogaDNS (elle kurulur) | `dns enable` ile dahili DoH/DoT |
 | `nslookup`, `ipconfig /flushdns` | `dig`, `resolvectl flush-caches` |
-| GoodbyeDPI çakışma kontrolü | `nfqws`/`tpws`/`byedpi`/TUN ve kuyruk çakışması (`doctor`) |
+| GoodbyeDPI çakışma kontrolü | `nfqws`/`tpws`/`byedpi`/TUN ve kuyruk çakışmaları (`doctor`) |
 | `config.ini` | `/etc/unwall/unwall.conf` |
-| AutoIt GUI | GTK4 + libadwaita (Python) |
+| AutoIt arayüzü | GTK4 + libadwaita (Python) |
 
-Strateji parametreleri (`--dpi-desync=…`, `--lua-desync=…`, `--hostlist…`) her iki
-platformda aynıdır; yalnızca trafiği motora yönlendirme katmanı değişir.
+Strateji parametrelerinin kendisi (`--dpi-desync=…`, `--lua-desync=…`,
+`--hostlist…`) iki platformda da aynıdır; yalnızca trafiği motora yönlendiren
+katman farklıdır.
 
 ## Proje yapısı
 
 ```
-bin/unwallctl          ayrıcalıklı işlerin tamamı (CLI + polkit hedefi)
-bin/unwall             GUI başlatıcı
-gui/unwall_gui.py      GTK4 / libadwaita arayüzü (host-farkında: Flatpak'tan da çalışır)
-lib/strategies.conf    hazır strateji profilleri
-etc/unwall.conf        varsayılan yapılandırma
-systemd/unwall.service systemd birimi
-polkit/…policy         yetki yükseltme politikası
-packaging/PKGBUILD     Arch paketi
-packaging/debian/      .deb kontrol dosyaları (bkz. build-deb.sh)
-packaging/unwall.spec  Fedora/openSUSE .rpm spec (bkz. build-rpm.sh)
-flatpak/                Arayüz için Flatpak manifesti (bkz. flatpak/README.md)
-packaging/appimage/     AppImage için AppRun (bkz. build-appimage.sh)
-docs/screenshots/      arayüz görselleri
+bin/unwallctl            yetki gerektiren bütün işler (CLI + polkit hedefi)
+bin/unwall               arayüz başlatıcı
+gui/unwall_gui.py        GTK4 / libadwaita arayüzü (Flatpak içinden de çalışır)
+lib/strategies.conf      hazır strateji profilleri
+etc/unwall.conf          varsayılan yapılandırma
+systemd/                 servis birimi + doğrulama ve nöbetçi zamanlayıcıları
+polkit/…policy           yetki yükseltme politikası
+packaging/               PKGBUILD, .deb, .rpm, AppImage, NetworkManager kancası
+flatpak/                 arayüz için Flatpak manifesti
+tests/unwallctl.bats     saf yardımcı fonksiyonların birim testleri
+docs/screenshots/        arayüz görselleri
 ```
-
-## Sorun giderme
-
-```bash
-unwallctl doctor
-```
-
-Arayüzü terminalden çalıştırırsanız her şey konsola akar; ayrıntı için:
-
-```bash
-UW_DEBUG=1 unwall
-```
-
-Uygulama tek örnekli çalışır: menüden açılmış bir pencere varken terminalden
-başlatmak yalnızca o pencereyi öne getirir ve terminale log gelmez. Hata
-ayıklarken ayrı bir örnek isterseniz:
-
-```bash
-UW_NO_UNIQUE=1 UW_DEBUG=1 unwall
-```
-
-<details open>
-<summary><b>Sık karşılaşılan sorunlar</b></summary>
-<br>
-
-- **Motor başlamıyor**: `journalctl -u unwall -n 50`
-- **Seçtiğim strateji geri dönüyor**: seçim "AYARLARI UYGULA" / "ZAPRET'İ
-  BAŞLAT" düğmesine basılana kadar yalnızca beklemededir; durum satırında
-  `uygulanmadı → ...` şeklinde görünür.
-- **Hiçbir şey değişmedi**: `sudo nft list table ip unwall` ile kuralların
-  yüklendiğini doğrulayın; hostlist modu `manual` ise alan adının listede olduğundan
-  emin olun.
-- **QUIC/HTTP3 siteleri bozuldu**: config'te `PORTS_UDP=` (boş) yapın.
-- **"Otomatik (zapret öğrenir)" hostlist modu yeni domain eklemiyor**: bir
-  domain yalnızca *henüz desync edilmemişken* tanınabilir bir "bağlantı
-  engellendi" örüntüsü (v1.3.8'den beri: tek bir başarısız deneme — motorun
-  kendi varsayılanı 60 saniyede 3'tür, `--hostlist-auto-fail-threshold=1`
-  ile düşürüyoruz ki tek bir kötü yükleme yetsin; tek bir deneme hâlâ
-  varsayılan olarak 3 TCP retransmit gerektirdiğinden rastgele bir ağ
-  sıçraması sayılmaz) görülürse eklenir. Stratejiniz zaten sorunsuz
-  çalışıyorsa bu örüntü hiç oluşmaz ve domain haklı olarak eklenmez.
-  v1.3.6 öncesinde, gerçekten engellenen
-  domainler de öğrenilemeyebiliyordu, çünkü yalnızca giden trafik motora
-  kuyruklanıyordu — zapret2'nin kendi otomatik-hostlist algılayıcısı gelen
-  yönü de (enjekte edilmiş bir RST ya da engel sayfasına HTTP yönlendirmesi)
-  görmesi gerekiyor; v1.3.6'daki nftables kuralları artık bunu da
-  kuyruklar. Hâlâ eski bir sürümdeyseniz önce güncelleyin. Motorun gerçekte
-  ne gördüğünü görmek için engellenen bir siteye girerken
-  `sudo tail -f /var/log/unwall/hostlist-auto.log` komutunu izleyin — birkaç
-  başarısız denemeden sonra log tamamen boşsa, gelen yön hâlâ motora
-  ulaşmıyor demektir.
-- **Başka bir DPI aracı çalışıyor**: `byedpi`, `tpws`, upstream `zapret.service`
-  veya TUN kuran bir VPN aynı anda açıksa kuyruk çakışır.
-- **Sistemde zaten upstream zapret kurulu** (`/opt/zapret`, `zapret.service`):
-  ikisini aynı anda çalıştırmayın — `sudo systemctl disable --now zapret`.
-  Bu projenin varsayılan kuyruk numarası çakışmayı azaltmak için `210`'dur
-  (upstream `200` kullanır). Ayrıca `build` adımını atlayıp mevcut
-  `/opt/zapret` ve `/opt/zapret2` ikilileri doğrudan kullanılabilir; motor
-  bulunamazsa oralara da bakılır.
-
-</details>
-
-Hâlâ takıldıysanız [hata bildirimi şablonunu](https://github.com/WinTone01/Unwall/issues/new/choose)
-kullanarak bir issue açın — istediği ortam tablosunu (sürüm, kurulum yöntemi,
-dağıtım, motor, strateji, hostlist modu) önceden doldurmak en büyük zaman
-kazancı.
 
 ## Katkıda bulunma
 
-Hata bildirimleri, başka ülkeler için strateji presetleri ve pull request'ler
-memnuniyetle karşılanır — projenin nasıl düzenlendiği, her push'ta CI'ın neyi
-kontrol ettiği ve bir PR açmadan önce yerelde neyi doğrulamanız gerektiği için
-[CONTRIBUTING.md](CONTRIBUTING.md) dosyasına (İngilizce) bakın.
+Hata bildirimleri, başka ülkeler için strateji presetleri ve pull request'ler —
+hepsi memnuniyetle karşılanır. Projenin nasıl kurgulandığı, CI'ın her push'ta
+neyi denetlediği ve PR açmadan önce yerelde neyi doğrulamanız gerektiği için
+[CONTRIBUTING.md](CONTRIBUTING.md) dosyasına bakın.
 
 ## Lisans
 
-Unwall [GNU Genel Kamu Lisansı v3.0](LICENSE) ya da sonraki bir sürümü ile
-lisanslanmıştır. Çalıştırmakta, incelemekte, paylaşmakta ve değiştirmekte
-serbestsiniz; değiştirilmiş bir sürümü dağıtırsanız aynı lisans altında
-kalmalı ve kaynak koduyla birlikte gelmelidir.
+Unwall, [GNU Genel Kamu Lisansı v3.0](LICENSE) veya sonrası ile lisanslanmıştır.
+Çalıştırmakta, incelemekte, paylaşmakta ve değiştirmekte özgürsünüz;
+değiştirilmiş bir sürümü dağıtırsanız aynı lisansla ve kaynağıyla birlikte
+dağıtmanız gerekir.
 
 ## Teşekkürler
 
-- [@WinTone01](https://github.com/WinTone01) — Unwall'ı yazdı: Linux tarafının
-  tamamı (`unwallctl`, systemd/nftables/polkit entegrasyonu, GTK4 arayüz,
-  şifreli DNS, ağ geçidi modu, güncelleme denetleyicisi) ve projeyi sürdürüyor.
-- Bu projenin temelini oluşturan Windows sürümü
+- [@WinTone01](https://github.com/WinTone01) — Unwall'ı yazdı ve sürdürüyor:
+  Linux portunun kendisi (`unwallctl`, systemd/nftables/polkit entegrasyonu,
+  GTK4 arayüzü, şifreli DNS, ağ geçidi modu, ölçüm sistemi).
+- zapret ve zapret2 motorları için [@bol-van](https://github.com/bol-van).
+- Bu projenin dayandığı Windows sürümü
   [zapret-win-turkey](https://github.com/alimali54/zapret-win-turkey) için
-  geliştiricisi [@alimali54](https://github.com/alimali54)
-- Zapret ve zapret2 motorları için [@bol-van](https://github.com/bol-van)
-- Otomatik blockcheck mantığı ve ilhamı için
-  [splitwire-turkey](https://github.com/cagritaskn/splitwire-turkey) geliştiricisi
-  [@cagritaskn](https://github.com/cagritaskn)
-- Windows sürümündeki LAN paylaşımı fikri için
-  [go-pcap2socks](https://github.com/DaniilSokolyuk/go-pcap2socks) geliştiricisi
-  [@DaniilSokolyuk](https://github.com/DaniilSokolyuk)
+  [@alimali54](https://github.com/alimali54).
+- Otomatik blockcheck mantığı ve strateji presetleri için
+  [@cagritaskn](https://github.com/cagritaskn) —
+  [splitwire-turkey](https://github.com/cagritaskn/splitwire-turkey).
+- Windows sürümünde kullanılan yerel ağ paylaşımı fikri için
+  [@DaniilSokolyuk](https://github.com/DaniilSokolyuk) —
+  [go-pcap2socks](https://github.com/DaniilSokolyuk/go-pcap2socks).
