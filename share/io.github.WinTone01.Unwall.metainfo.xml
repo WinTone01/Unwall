@@ -59,6 +59,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="2.0.2" date="2026-09-29">
+      <description>
+        <p>Fixes the AppImage failing to start with "Permission denied" when run under another user or inside a sandbox such as firejail: the root directory of the image was packed as private to its owner.</p>
+      </description>
+    </release>
     <release version="2.0.1" date="2026-09-06">
       <description>
         <p>New application icon: a packet meeting a wall, most of it stopping there and one piece going through the gap - which is what the engine does when it splits a TLS message into something the DPI cannot match. Flat colours instead of the previous gradient, and legible down to 16 pixels.</p>

@@ -27,6 +27,10 @@ command -v "$APPIMAGETOOL" >/dev/null 2>&1 || {
 
 APPDIR="$(mktemp -d)"
 trap 'rm -rf "$APPDIR"' EXIT
+# mktemp -d dizini 0700 açar; bu, squashfs'in kök dizini olur ve AppImage
+# başka bir kullanıcı (ya da firejail) altında açıldığında AppRun'a
+# ulaşılamaz ("Permission denied"). Kökü herkes okuyabilsin.
+chmod 0755 "$APPDIR"
 
 echo "==> $VERSION için AppDir hazırlanıyor: $APPDIR"
 

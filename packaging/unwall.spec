@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        2.0.1
+Version:        2.0.2
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -195,6 +195,8 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Tue Sep 29 2026 WinTone01 <wintone01@users.noreply.github.com> - 2.0.2-1
+- AppImage: the image root directory was packed with mode 0700, so AppRun could not be reached when the AppImage was run as another user or inside firejail. It is now 0755.
 * Sun Sep 06 2026 WinTone01 <wintone01@users.noreply.github.com> - 2.0.1-1
 - New application icon (a packet passing through a gap in a wall), flat colours instead of a gradient, legible at 16px. Ships in every package so the icon updates wherever Unwall was installed from.
 - Watchdog needs two consecutive bad checks before reporting a broken strategy: the sample is five domains and a single unlucky check was enough to trigger a strategy change under WATCHDOG_ACTION=tune.
