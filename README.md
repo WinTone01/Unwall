@@ -133,7 +133,7 @@ unwallctl status
 | Debian / Ubuntu | `./packaging/build-deb.sh && sudo apt install ./packaging/unwall_*.deb` |
 | Fedora / openSUSE | `./packaging/build-rpm.sh && sudo dnf install ./packaging/RPMS/*.rpm` |
 | Flatpak (GUI only) | see [`flatpak/README.md`](flatpak/README.md) |
-| AppImage (GUI only) | `./packaging/build-appimage.sh` |
+| AppImage (installs the backend itself) | `./packaging/build-appimage.sh` |
 
 Prebuilt `.deb`, `.rpm`, AppImage and Flatpak files are attached to every
 [release](https://github.com/WinTone01/Unwall/releases/latest).
@@ -142,11 +142,13 @@ The build scripts produce a real package from this repository — they download
 nothing prebuilt — and behave exactly like `install.sh`: no service is started
 and no system setting is touched until you do it yourself.
 
-The Flatpak and the AppImage are a special case. They can only contain the GTK4
-interface, not the nftables/systemd/NFQUEUE parts, so either still needs one of
-the packages above (or `install.sh`) on the host first. The Flatpak is sandboxed
-and reaches the host's `unwallctl`/`pkexec` through `flatpak-spawn --host`; the
-AppImage is not sandboxed and calls them directly.
+The Flatpak and the AppImage are a special case. The nftables/systemd/NFQUEUE
+parts cannot run from inside either, so they have to be installed on the host.
+The AppImage carries `install.sh` and everything it installs: if it finds no
+backend, a bar at the top offers to install it, asks for your password once
+through `pkexec` and shows the installer's output on the Log page. The Flatpak
+still needs one of the packages above (or `install.sh`) first; it is sandboxed
+and reaches the host's `unwallctl`/`pkexec` through `flatpak-spawn --host`.
 
 <details>
 <summary><b>Installer options and manual dependencies</b></summary>

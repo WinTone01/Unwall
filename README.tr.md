@@ -135,7 +135,7 @@ unwallctl status
 | Debian / Ubuntu | `./packaging/build-deb.sh && sudo apt install ./packaging/unwall_*.deb` |
 | Fedora / openSUSE | `./packaging/build-rpm.sh && sudo dnf install ./packaging/RPMS/*.rpm` |
 | Flatpak (yalnızca arayüz) | bkz. [`flatpak/README.md`](flatpak/README.md) |
-| AppImage (yalnızca arayüz) | `./packaging/build-appimage.sh` |
+| AppImage (backend'i kendisi kurar) | `./packaging/build-appimage.sh` |
 
 Hazır `.deb`, `.rpm`, AppImage ve Flatpak dosyaları her
 [sürümün](https://github.com/WinTone01/Unwall/releases/latest) ekinde bulunur.
@@ -144,11 +144,13 @@ Derleme betikleri bu depodan gerçek bir paket üretir — hiçbir hazır dosya
 indirmezler — ve `install.sh` ile birebir aynı davranırlar: siz yapmadan hiçbir
 servis başlatılmaz, hiçbir sistem ayarına dokunulmaz.
 
-Flatpak ve AppImage ayrı bir durum. İkisi de yalnızca GTK4 arayüzünü
-içerebiliyor; nftables/systemd/NFQUEUE tarafını değil. Bu yüzden host'ta yine
-yukarıdaki paketlerden biri (ya da `install.sh`) kurulu olmalı. Flatpak
-sandbox'lıdır ve host'taki `unwallctl`/`pkexec`'e `flatpak-spawn --host` ile
-ulaşır; AppImage sandbox'lı değildir, onları doğrudan çağırır.
+Flatpak ve AppImage ayrı bir durum. nftables/systemd/NFQUEUE tarafı ikisinin
+içinden de çalışamaz; host'a kurulması gerekir. AppImage `install.sh`'i ve
+kurduğu her şeyi içinde taşıyor: backend'i bulamazsa üstteki bir çubukla onu
+kurmayı önerir, parolanızı `pkexec` ile bir kez sorar ve kurulum çıktısını
+Günlük sayfasında gösterir. Flatpak için ise önce yukarıdaki paketlerden biri
+(ya da `install.sh`) kurulu olmalı; Flatpak sandbox'lıdır ve host'taki
+`unwallctl`/`pkexec`'e `flatpak-spawn --host` ile ulaşır.
 
 <details>
 <summary><b>Kurulum seçenekleri ve bağımlılıkların elle kurulumu</b></summary>

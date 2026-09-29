@@ -8,8 +8,9 @@
 #
 # Çıktı: packaging/Unwall-<sürüm>-x86_64.AppImage
 #
-# NOT: Bu, yalnızca GTK4 arayüzünü paketler (bkz. AppRun içindeki not).
-# unwallctl'in host'ta native olarak kurulu olması hâlâ gerekir.
+# NOT: Arayüz GTK4'ü host'tan kullanır (bkz. AppRun içindeki not).
+# Backend (unwallctl, systemd birimi) host'ta kurulu değilse arayüz onu
+# AppImage'ın içindeki install.sh ile kurmayı önerir.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
@@ -62,10 +63,27 @@ ln -sf io.github.WinTone01.Unwall.svg "$APPDIR/.DirIcon"
 install -m 0644 "$SRC/share/io.github.WinTone01.Unwall.metainfo.xml" \
 	"$APPDIR/usr/share/metainfo/io.github.WinTone01.Unwall.metainfo.xml"
 
+# Backend kurulumu: install.sh ve kurduğu dosyalar, kaynak ağacındaki
+# yerleriyle. Arayüz backend'i bulamazsa bunları geçici bir dizine
+# kopyalayıp install.sh'i pkexec ile oradan çalıştırır (bkz.
+# _on_install_backend in gui/unwall_gui.py).
+BACKEND="$APPDIR/usr/share/unwall/backend"
+for f in install.sh uninstall.sh bin/unwallctl bin/unwall packaging/nm-dispatcher/90-unwall; do
+	install -Dm 0755 "$SRC/$f" "$BACKEND/$f"
+done
+for f in gui/unwall_gui.py lib/strategies.conf etc/unwall.conf \
+	hostlist.txt excludelist.txt autohostlist.txt \
+	systemd/unwall.service systemd/unwall-verify.service systemd/unwall-verify.timer \
+	systemd/unwall-watchdog.service systemd/unwall-watchdog.timer \
+	polkit/io.github.WinTone01.Unwall.policy \
+	share/io.github.WinTone01.Unwall.desktop share/io.github.WinTone01.Unwall.svg; do
+	install -Dm 0644 "$SRC/$f" "$BACKEND/$f"
+done
+
 OUT="$SRC/packaging/Unwall-${VERSION}-x86_64.AppImage"
 echo "==> paketleniyor: $OUT"
 ARCH=x86_64 "$APPIMAGETOOL" "$APPDIR" "$OUT"
 
 echo
 echo "Çalıştırmak için:  chmod +x '$OUT' && '$OUT'"
-echo "(unwallctl'in host'ta native kurulu olması gerekir: sudo $SRC/install.sh)"
+echo "(backend kurulu değilse arayüz üstteki Kur düğmesiyle kurar)"

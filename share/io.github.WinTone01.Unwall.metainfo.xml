@@ -59,6 +59,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="2.1.0" date="2026-09-29">
+      <description>
+        <p>The AppImage no longer needs a separate installation first. It carries the installer and everything it installs; when the system service is missing, a bar at the top offers to install it, asks for your password once and shows the installer's output on the Log page.</p>
+        <p>The interface recognises a missing installation again: it used to say the engine was not built instead of saying that Unwall itself was not installed.</p>
+      </description>
+    </release>
     <release version="2.0.2" date="2026-09-29">
       <description>
         <p>Fixes the AppImage failing to start with "Permission denied" when run under another user or inside a sandbox such as firejail: the root directory of the image was packed as private to its owner.</p>

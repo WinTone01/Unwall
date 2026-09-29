@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 
@@ -22,7 +23,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk, Pango  # noqa: E402
 
 APP_ID = "io.github.WinTone01.Unwall"
-VERSION = "2.0.2"
+VERSION = "2.1.0"
 
 POLL_TIMEOUT = 6  # yoklama çağrıları için kısa zaman aşımı
 
@@ -313,6 +314,11 @@ TR = {
     'stop': 'durdur',
     '{} is configured but not active': '{} yapılandırıldı ama etkin değil',
     '{} not found. Run install.sh.': '{} bulunamadı. install.sh çalıştırın.',
+    "Unwall's system service is not installed": "Unwall'ın sistem bileşeni kurulu değil",
+    'Install': 'Kur',
+    'Use the Install button at the top to set it up.': 'Kurmak için üstteki Kur düğmesini kullanın.',
+    'install the system service': 'sistem bileşeni kuruluyor',
+    "Unwall's system service is installed": "Unwall'ın sistem bileşeni kuruldu",
 }
 
 
@@ -354,6 +360,13 @@ if IN_FLATPAK:
 else:
     CTL = os.environ.get("UW_CTL", shutil.which("unwallctl") or "/usr/local/bin/unwallctl")
 ETC_DIR = os.environ.get("UW_ETC", "/etc/unwall")
+
+# AppImage, install.sh'i ve kurduğu dosyaları kendi içinde taşıyor (bkz.
+# packaging/build-appimage.sh); AppRun bu dizini UW_BACKEND_SRC ile
+# bildiriyor. Backend kurulu değilse arayüz buradan kurmayı önerir.
+BACKEND_SRC = os.environ.get("UW_BACKEND_SRC", "")
+if IN_FLATPAK or not os.path.isfile(os.path.join(BACKEND_SRC, "install.sh")):
+    BACKEND_SRC = ""
 
 HOSTLIST_MODES = [
     ("auto", T("Automatic (zapret learns)")),
@@ -600,6 +613,16 @@ class Window(Adw.ApplicationWindow):
         self._update_latest = ""
         self.update_banner.connect("button-clicked", self._on_update_banner_clicked)
         toolbar.add_top_bar(self.update_banner)
+
+        # AppImage'dan açıldıysa ve backend kurulu değilse: AppImage'ın
+        # içindeki install.sh ile kurma teklifi (bkz. BACKEND_SRC)
+        self.backend_banner = Adw.Banner(
+            title=T("Unwall's system service is not installed"),
+            button_label=T("Install"),
+            revealed=False,
+        )
+        self.backend_banner.connect("button-clicked", self._on_install_backend)
+        toolbar.add_top_bar(self.backend_banner)
 
         # Sayfalar: Durum / Ayarlar / Listeler / Günlük. Tek uzun kaydırma
         # yerine ViewStack; başlıktaki ViewSwitcher geniş pencerede, alttaki
@@ -1551,6 +1574,39 @@ class Window(Adw.ApplicationWindow):
             done=self._on_self_update_done,
         )
 
+    def _on_install_backend(self, *_):
+        # AppImage FUSE ile yalnızca onu açan kullanıcıya bağlanır; root
+        # (pkexec) bu bağlama noktasını okuyamaz. Kurulum dosyalarını önce
+        # kullanıcı olarak geçici bir dizine kopyalıyoruz, install.sh
+        # oradan çalışır.
+        try:
+            tmp = tempfile.mkdtemp(prefix="unwall-install-")
+            shutil.copytree(BACKEND_SRC, tmp, dirs_exist_ok=True)
+        except OSError as exc:
+            self.log(f"could not prepare the installer: {exc}")
+            return
+        self.backend_banner.set_revealed(False)
+        self.stack.set_visible_child_name("log")
+
+        def done(code):
+            global CTL
+            shutil.rmtree(tmp, ignore_errors=True)
+            if code != 0:
+                self.refresh()
+                return
+            # CTL modül yüklenirken çözülmüştü; artık gerçekten var.
+            CTL = os.environ.get(
+                "UW_CTL", shutil.which("unwallctl") or "/usr/local/bin/unwallctl")
+            self.toast(T("Unwall's system service is installed"))
+            self.refresh()
+
+        self.run_privileged(
+            [],
+            title=T("install the system service"),
+            raw_argv=["bash", os.path.join(tmp, "install.sh"), "--yes"],
+            done=done,
+        )
+
     def _on_self_update_done(self, code):
         if code != 0:
             return
@@ -1620,11 +1676,20 @@ class Window(Adw.ApplicationWindow):
 
     def _refresh(self):
         code, out = ctl("status", timeout=POLL_TIMEOUT)
-        if code != 0 and not out.strip():
+        # Sandbox dışında CTL'nin varlığına doğrudan bakıyoruz: yoksa ctl()
+        # OSError metnini çıktı olarak döndürür, "boş çıktı" koşulu tutmaz.
+        missing = (code != 0 and not out.strip()) or (
+            not IN_FLATPAK and shutil.which(CTL) is None)
+        if missing:
             self.lbl_state.set_label(T("INSTALLATION INCOMPLETE"))
-            self.lbl_sub.set_label(T("{} not found. Run install.sh.").format(CTL))
+            if BACKEND_SRC:
+                self.lbl_sub.set_label(T("Use the Install button at the top to set it up."))
+                self.backend_banner.set_revealed(not self._busy)
+            else:
+                self.lbl_sub.set_label(T("{} not found. Run install.sh.").format(CTL))
             self.btn_main.set_sensitive(False)
             return
+        self.backend_banner.set_revealed(False)
         self.status = parse_kv(out)
         _, cfg_out = ctl("config", "get", timeout=POLL_TIMEOUT)
         self.config = parse_kv(cfg_out)

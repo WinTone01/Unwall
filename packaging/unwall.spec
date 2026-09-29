@@ -4,7 +4,7 @@
 # libnfnetlink-devel, libmnl-devel, libluajit-2_1-2 / luajit-devel.
 
 Name:           unwall
-Version:        2.0.2
+Version:        2.1.0
 Release:        1%{?dist}
 Summary:        GTK4 control panel for the zapret/nfqws DPI bypass engine
 
@@ -195,6 +195,9 @@ fi
 %{_prefix}/lib/modules-load.d/unwall.conf
 
 %changelog
+* Tue Sep 29 2026 WinTone01 <wintone01@users.noreply.github.com> - 2.1.0-1
+- AppImage installs the backend itself: it carries install.sh and the files it installs, and when unwallctl is missing the GUI offers to run it through pkexec.
+- GUI recognises a missing unwallctl again; it used to report "engine not built" instead of "installation incomplete".
 * Tue Sep 29 2026 WinTone01 <wintone01@users.noreply.github.com> - 2.0.2-1
 - AppImage: the image root directory was packed with mode 0700, so AppRun could not be reached when the AppImage was run as another user or inside firejail. It is now 0755.
 * Sun Sep 06 2026 WinTone01 <wintone01@users.noreply.github.com> - 2.0.1-1
